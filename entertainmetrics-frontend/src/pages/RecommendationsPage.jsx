@@ -27,9 +27,8 @@ import {
   formatNumber,
   thumbGradient,
 } from "../format";
+import { FORECAST, INK, INK_MUTED } from "../theme";
 
-const AMBER = "#F0A860";
-const TEAL = "#4FD1C5";
 
 function PricingPanel({ eventId, event }) {
   const { data: pricing, error, loading } = useApiData(`/events/${eventId}/recommend/pricing`);
@@ -51,13 +50,13 @@ function PricingPanel({ eventId, event }) {
         </div>
         <div className="legend">
           <span>
-            <i style={{ background: AMBER }} /> Revenue
+            <i style={{ background: FORECAST }} /> Projected revenue
           </span>
           <span>
-            <i style={{ background: AMBER, width: 2, height: 12 }} /> Recommended
+            <i style={{ background: INK, width: 2, height: 12 }} /> Recommended
           </span>
           <span>
-            <i style={{ background: TEAL, width: 2, height: 12 }} /> Current price
+            <i className="legend-dash" /> Current price
           </span>
         </div>
       </div>
@@ -73,15 +72,13 @@ function PricingPanel({ eventId, event }) {
                 ? "same as current price"
                 : `${priceDelta > 0 ? "+" : "−"}${formatKes(Math.abs(priceDelta))} vs current`
           }
-          accent={AMBER}
         />
-        <StatCard label="Projected attendance" value={formatNumber(pricing.predicted_attendance)} accent={TEAL} />
-        <StatCard label="Projected revenue" value={formatKes(pricing.predicted_revenue)} accent="#5FD9B4" />
+        <StatCard label="Projected attendance" value={formatNumber(pricing.predicted_attendance)} />
+        <StatCard label="Projected revenue" value={formatKes(pricing.predicted_revenue)} />
         <StatCard
           label="Confidence"
           value={pricing.confidence_score.toFixed(2)}
           note="heuristic, not a probability"
-          accent="#9B8CF2"
         />
       </div>
 
@@ -90,8 +87,8 @@ function PricingPanel({ eventId, event }) {
           <AreaChart data={pricing.candidates} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={AMBER} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={AMBER} stopOpacity={0} />
+                <stop offset="0%" stopColor={FORECAST} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={FORECAST} stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -111,13 +108,13 @@ function PricingPanel({ eventId, event }) {
               }
             />
             {event && (
-              <ReferenceLine x={event.ticket_price} stroke={TEAL} strokeDasharray="4 4" />
+              <ReferenceLine x={event.ticket_price} stroke={INK_MUTED} strokeDasharray="4 4" />
             )}
-            <ReferenceLine x={pricing.recommended_ticket_price} stroke={AMBER} strokeWidth={2} />
+            <ReferenceLine x={pricing.recommended_ticket_price} stroke={INK} strokeWidth={2} />
             <Area
               type="monotone"
               dataKey="predicted_revenue"
-              stroke={AMBER}
+              stroke={FORECAST}
               strokeWidth={2}
               fill="url(#revenueFill)"
             />
@@ -173,7 +170,7 @@ function ArtistRecommendations({ eventId }) {
                     className="bar-fill"
                     style={{
                       width: `${Math.max(0, (rec.projected_revenue_uplift / maxUplift) * 100)}%`,
-                      background: AMBER,
+                      background: FORECAST,
                     }}
                   />
                 </div>

@@ -64,9 +64,9 @@ export function confidencePillClass(score) {
 }
 
 export const THUMB_GRADIENTS = [
-  "linear-gradient(135deg, #F0A860, #9B6B3A)",
-  "linear-gradient(135deg, #4FD1C5, #2C8C82)",
-  "linear-gradient(135deg, #9B8CF2, #6657B0)",
+  "linear-gradient(135deg, #3A3A40, #232327)",
+  "linear-gradient(135deg, #34343A, #1E1E22)",
+  "linear-gradient(135deg, #2E2E34, #1A1A1E)",
 ];
 
 export function thumbGradient(id) {
