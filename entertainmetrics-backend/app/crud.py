@@ -107,6 +107,20 @@ def create_event_artist(db: Session, event_artist: schemas.EventArtistCreate):
     return db_event_artist
 
 
+def delete_event_artist(db: Session, event_artist: models.EventArtist):
+    db.delete(event_artist)
+    db.commit()
+
+
+def delete_artist(db: Session, artist: models.Artist) -> int:
+    """Delete an artist and (via the relationship cascade) every lineup slot
+    they hold. Returns the number of lineup slots removed."""
+    lineup_entries_removed = len(artist.event_links)
+    db.delete(artist)
+    db.commit()
+    return lineup_entries_removed
+
+
 def get_event_lineup(db: Session, event_id: int):
     return (
         db.query(models.EventArtist)

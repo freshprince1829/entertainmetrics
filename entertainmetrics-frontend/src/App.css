@@ -1760,7 +1760,7 @@ td .pill {
 }
 
 .text-button.danger {
-  color: var(--amber-soft);
+  color: var(--negative);
   font-weight: 600;
 }
 
@@ -1792,6 +1792,20 @@ td .pill {
 
 .confirm-box .modal-actions {
   margin-top: 12px;
+}
+
+/* ---------- Artist / lineup removal ---------- */
+.lineup-actions {
+  margin-left: auto;
+}
+
+.artist-delete {
+  align-self: flex-start;
+}
+
+.artist-delete-confirm .event-sub {
+  margin: 8px 0 0;
+  line-height: 1.5;
 }
 
 /* ---------- Dashboard (v2) ---------- */

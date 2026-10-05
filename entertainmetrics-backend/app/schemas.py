@@ -77,6 +77,12 @@ class ArtistResponse(BaseModel):
     created_at: datetime
 
 
+class ArtistDeleteResponse(BaseModel):
+    deleted_artist_id: int
+    artist_name: str
+    lineup_entries_removed: int
+
+
 class EventArtistCreate(BaseModel):
     event_id: int
     artist_id: int

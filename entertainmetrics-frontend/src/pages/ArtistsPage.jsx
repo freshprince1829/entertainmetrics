@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { apiPost, useApiData } from "../api";
+import { apiDelete, apiPost, useApiData } from "../api";
 import {
   EmptyState,
   Field,
@@ -142,6 +142,27 @@ function ArtistsPage() {
   const [sortBy, setSortBy] = useState("strength");
   const [showCreate, setShowCreate] = useState(false);
   const [notice, setNotice] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  async function handleDelete(artist) {
+    setNotice("");
+    setDeleteError("");
+    try {
+      const result = await apiDelete(`/artists/${artist.id}`);
+      const removed = result.lineup_entries_removed;
+      setNotice(
+        `“${result.artist_name}” was deleted` +
+          (removed > 0
+            ? ` and removed from ${removed} event lineup${removed === 1 ? "" : "s"}.`
+            : "."),
+      );
+      setPendingDeleteId(null);
+      artistsQuery.reload();
+    } catch (err) {
+      setDeleteError(err.message || "Failed to delete artist");
+    }
+  }
 
   const artists = useMemo(() => artistsQuery.data ?? [], [artistsQuery.data]);
 
@@ -207,6 +228,9 @@ function ArtistsPage() {
 
       <Notice tone="success" onDismiss={() => setNotice("")}>
         {notice}
+      </Notice>
+      <Notice tone="error" onDismiss={() => setDeleteError("")}>
+        {deleteError}
       </Notice>
 
       <section className="summary-grid">
@@ -309,6 +333,32 @@ function ArtistsPage() {
                       </div>
                     ))}
                   </div>
+
+                  {pendingDeleteId === artist.id ? (
+                    <div className="confirm-box artist-delete-confirm">
+                      <strong>Delete {artist.artist_name} from the system?</strong>
+                      <p className="event-sub">
+                        They will also be removed from every event lineup. Saved
+                        predictions are kept as history. This cannot be undone.
+                      </p>
+                      <div className="modal-actions">
+                        <button type="button" className="ghost-button" onClick={() => setPendingDeleteId(null)}>
+                          Cancel
+                        </button>
+                        <button type="button" className="primary-button" onClick={() => handleDelete(artist)}>
+                          Delete artist
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-button danger artist-delete"
+                      onClick={() => setPendingDeleteId(artist.id)}
+                    >
+                      Delete artist
+                    </button>
+                  )}
                 </article>
               ))}
             </div>

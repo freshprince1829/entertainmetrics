@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiPatch, apiPost, useApiData } from "../api";
+import { apiDelete, apiPatch, apiPost, useApiData } from "../api";
 import {
   EmptyState,
   Field,
@@ -259,6 +259,19 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
   const [formData, setFormData] = useState(initialLineupForm);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [pendingRemoveId, setPendingRemoveId] = useState(null);
+
+  async function handleRemove(entry, artistName) {
+    setNotice(null);
+    try {
+      await apiDelete(`/event-artists/${entry.id}`);
+      setPendingRemoveId(null);
+      setNotice({ tone: "success", text: `${artistName} was removed from this lineup.` });
+      lineupQuery.reload();
+    } catch (err) {
+      setNotice({ tone: "error", text: err.message || "Failed to remove artist from lineup" });
+    }
+  }
 
   const artistById = useMemo(() => {
     const map = {};
@@ -376,6 +389,7 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
         <ol className="lineup-list">
           {lineup.map((entry) => {
             const artist = artistById[entry.artist_id];
+            const artistName = artist?.artist_name ?? `Artist #${entry.artist_id}`;
             return (
               <li key={entry.id}>
                 <span className="lineup-order">{entry.performance_order ?? "–"}</span>
@@ -393,6 +407,25 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
                       .join(" · ") || "No role set"}
                   </div>
                 </div>
+                {pendingRemoveId === entry.id ? (
+                  <span className="row-actions lineup-actions">
+                    <button type="button" className="text-button danger" onClick={() => handleRemove(entry, artistName)}>
+                      Confirm remove
+                    </button>
+                    <button type="button" className="text-button" onClick={() => setPendingRemoveId(null)}>
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-button lineup-actions"
+                    onClick={() => setPendingRemoveId(entry.id)}
+                    title="Remove from this event only - the artist stays in the system"
+                  >
+                    Remove
+                  </button>
+                )}
               </li>
             );
           })}
