@@ -263,3 +263,17 @@ def test_finalize_rejections(client, days_from_today, has_snapshot, expected):
 
 def test_finalize_unknown_event(client):
     assert client.post("/events/999/finalize-actuals").status_code == 404
+
+
+def test_returned_timestamps_carry_a_utc_offset(client):
+    # 22:00 in Nairobi is 19:00 UTC; every endpoint must say so explicitly.
+    event = make_event(client, days_from_today=0, capacity=1000)
+    add_snapshot(client, event["id"], at(TODAY, 22), 100)
+    expected = f"{TODAY.isoformat()}T19:00:00Z"
+
+    listed = client.get(f"/events/{event['id']}/sales-snapshots").json()[0]["recorded_at"]
+    data = progress(client, event["id"])
+    live = client.get(f"/events/{event['id']}/live-vs-predicted").json()
+    for value in (listed, data["latest_recorded_at"],
+                  data["finalize_preview"]["recorded_at"], live["recorded_at"]):
+        assert value == expected

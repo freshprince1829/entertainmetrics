@@ -166,7 +166,7 @@ def final_actuals_preview(
 
     return {
         "snapshot_id": latest.id,
-        "recorded_at": latest.recorded_at,
+        "recorded_at": as_utc(latest.recorded_at),
         "actual_attendance": attendance,
         "attendance_source": attendance_source,
         "revenue": revenue,
@@ -238,7 +238,7 @@ def compute_progress(
 
     return {
         **base,
-        "latest_recorded_at": latest.recorded_at,
+        "latest_recorded_at": as_utc(latest.recorded_at),
         "tickets_sold_total": total,
         "gate_tickets_sold": latest.gate_tickets_sold,
         "attendance_checked_in": latest.attendance_checked_in,
@@ -297,7 +297,7 @@ def compute_live_vs_predicted(
     return {
         "event_id": event.id,
         "phase": event_phase(event.event_date, today),
-        "recorded_at": latest.recorded_at if latest else None,
+        "recorded_at": as_utc(latest.recorded_at) if latest else None,
         "predicted_attendance": predicted,
         "tickets_sold_so_far": tickets,
         "attendance_so_far": attendance,
