@@ -11,15 +11,27 @@ const initialForm = {
 
 function PredictionsPage() {
   const [predictions, setPredictions] = useState([]);
+  const [eventNames, setEventNames] = useState({});
   const [formData, setFormData] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
   async function loadPredictions() {
     try {
-      const res = await fetch(`${API_BASE}/predictions`);
-      const data = await res.json();
-      setPredictions(data);
+      const [predictionsRes, eventsRes] = await Promise.all([
+        fetch(`${API_BASE}/predictions`),
+        fetch(`${API_BASE}/events`),
+      ]);
+      const predictionsData = await predictionsRes.json();
+      const eventsData = await eventsRes.json();
+
+      const names = {};
+      for (const event of eventsData) {
+        names[event.id] = event.event_name;
+      }
+
+      setPredictions(predictionsData);
+      setEventNames(names);
     } catch (err) {
       console.error(err);
     }
@@ -136,7 +148,7 @@ function PredictionsPage() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Event ID</th>
+                  <th>Event</th>
                   <th>Attendance</th>
                   <th>Revenue</th>
                   <th>Confidence</th>
@@ -148,7 +160,10 @@ function PredictionsPage() {
                 {predictions.map((prediction) => (
                   <tr key={prediction.id}>
                     <td>{prediction.id}</td>
-                    <td>{prediction.event_id}</td>
+                    <td>
+                      {eventNames[prediction.event_id] || "Unknown event"} (#
+                      {prediction.event_id})
+                    </td>
                     <td>{prediction.predicted_attendance}</td>
                     <td>KES {prediction.predicted_revenue}</td>
                     <td>{Math.round(prediction.confidence_score * 100)}%</td>
