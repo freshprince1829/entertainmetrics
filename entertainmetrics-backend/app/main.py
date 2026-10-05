@@ -304,6 +304,82 @@ def delete_sales_snapshot(event_id: int, snapshot_id: int, db: Session = Depends
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
 
+@app.get(
+    "/events/{event_id}/sales-progress",
+    response_model=schemas.SalesProgressResponse,
+)
+def get_sales_progress(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        return sales.compute_progress(event, snapshots, date.today())
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/live-vs-predicted",
+    response_model=schemas.LiveVsPredictedResponse,
+)
+def get_live_vs_predicted(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        latest_prediction = crud.get_latest_prediction(db, event_id)
+        return sales.compute_live_vs_predicted(
+            event, snapshots, latest_prediction, date.today()
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/analytics/event-day-patterns",
+    response_model=schemas.EventDayPatternsResponse,
+)
+def get_event_day_patterns(db: Session = Depends(get_db)):
+    try:
+        events = crud.get_events_with_snapshots(db)
+        return sales.compute_event_day_patterns(events, date.today())
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.post(
+    "/events/{event_id}/finalize-actuals",
+    response_model=schemas.FinalizeActualsResponse,
+)
+def finalize_actuals(event_id: int, db: Session = Depends(get_db)):
+    """Explicit close-out: copy the latest snapshot into the event's final
+    actuals. Snapshots never change actuals on their own."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        if event.event_date > date.today():
+            raise HTTPException(
+                status_code=400,
+                detail="An event can only be closed out on or after its event date",
+            )
+        snapshots = sales.sort_snapshots(crud.get_sales_snapshots(db, event_id))
+        if not snapshots:
+            raise HTTPException(
+                status_code=400,
+                detail="No sales snapshots recorded; record actuals manually instead",
+            )
+        preview = sales.final_actuals_preview(event, snapshots[-1])
+        crud.finalize_event_actuals(
+            db, event, preview["actual_attendance"], preview["revenue"]
+        )
+        return {"event_id": event.id, **preview}
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
 @app.post("/artists", response_model=schemas.ArtistResponse)
 def create_artist(artist: schemas.ArtistCreate, db: Session = Depends(get_db)):
     try:

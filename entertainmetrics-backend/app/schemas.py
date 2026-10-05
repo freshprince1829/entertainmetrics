@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EventCreate(BaseModel):
@@ -228,3 +228,69 @@ class SalesSnapshotResponse(BaseModel):
     revenue_to_date: float | None = None
     notes: str | None = None
     created_at: datetime | None = None
+
+    @field_validator("recorded_at")
+    @classmethod
+    def recorded_at_as_utc(cls, value: datetime) -> datetime:
+        # SQLite returns naive datetimes; they are stored as UTC.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+
+class FinalizePreview(BaseModel):
+    snapshot_id: int
+    recorded_at: datetime
+    actual_attendance: int
+    attendance_source: str
+    revenue: float | None = None
+    revenue_source: str
+
+
+class SalesProgressResponse(BaseModel):
+    event_id: int
+    capacity: int
+    phase: str
+    days_until_event: int
+    snapshot_count: int
+    latest_recorded_at: datetime | None = None
+    tickets_sold_total: int | None = None
+    gate_tickets_sold: int | None = None
+    attendance_checked_in: int | None = None
+    revenue_to_date: float | None = None
+    sell_through_pct: float | None = None
+    velocity_tickets_per_day: float | None = None
+    gate_share_pct: float | None = None
+    show_rate_pct: float | None = None
+    projected_final_sales: int | None = None
+    finalize_preview: FinalizePreview | None = None
+    explanation: str
+
+
+class LiveVsPredictedResponse(BaseModel):
+    event_id: int
+    phase: str
+    recorded_at: datetime | None = None
+    predicted_attendance: int | None = None
+    tickets_sold_so_far: int | None = None
+    attendance_so_far: int | None = None
+    tickets_percent_of_prediction: float | None = None
+    attendance_percent_of_prediction: float | None = None
+    status: str | None = None
+    status_basis: str
+    tolerance_pct: float
+    is_final: bool
+    explanation: str
+
+
+class EventDayPatternsResponse(BaseModel):
+    avg_gate_share_pct: float | None = None
+    avg_show_rate_pct: float | None = None
+    events_used: int
+    min_events_required: int
+    sufficient_history: bool
+    explanation: str
+
+
+class FinalizeActualsResponse(FinalizePreview):
+    event_id: int
