@@ -21,6 +21,7 @@ import {
   isUpcoming,
   thumbGradient,
 } from "../format";
+import { ACTUAL } from "../theme";
 
 const EVENT_TYPE_SUGGESTIONS = ["Concert", "Festival", "Comedy", "Jazz", "Club Night", "Conference"];
 
@@ -511,10 +512,10 @@ function EventsPage() {
       </Notice>
 
       <section className="summary-grid">
-        <StatCard label="Total events" value={formatNumber(events.length)} accent="#F0A860" />
-        <StatCard label="Upcoming" value={formatNumber(stats.upcoming)} note="dated today or later" accent="#4FD1C5" />
-        <StatCard label="Combined capacity" value={formatNumber(stats.capacity)} accent="#9B8CF2" />
-        <StatCard label="Recorded revenue" value={formatKes(stats.recordedRevenue)} note="from completed events" accent="#5FD9B4" />
+        <StatCard label="Total events" value={formatNumber(events.length)} />
+        <StatCard label="Upcoming" value={formatNumber(stats.upcoming)} note="dated today or later" />
+        <StatCard label="Combined capacity" value={formatNumber(stats.capacity)} />
+        <StatCard label="Recorded revenue" value={formatKes(stats.recordedRevenue)} note="from completed events" />
       </section>
 
       {eventsQuery.loading ? (
@@ -621,7 +622,7 @@ function EventsPage() {
                           {event.actual_attendance != null ? (
                             <>
                               {formatNumber(event.actual_attendance)}
-                              <ProgressBar value={event.actual_attendance} max={event.capacity} color="#4FD1C5" />
+                              <ProgressBar value={event.actual_attendance} max={event.capacity} color={ACTUAL} />
                             </>
                           ) : (
                             <span className="event-sub">Not recorded</span>

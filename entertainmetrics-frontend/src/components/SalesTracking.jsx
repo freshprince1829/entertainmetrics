@@ -12,11 +12,8 @@ import {
 import { apiDelete, apiPost, useApiData } from "../api";
 import { canRecordActuals, formatDateTime, formatKes, formatNumber } from "../format";
 import { Field, Notice, StatCard } from "./ui";
+import { ACTUAL, CHECKED_IN, INK_MUTED } from "../theme";
 
-const AMBER = "#F0A860";
-const AMBER_SOFT = "#F7C488";
-const TEAL = "#4FD1C5";
-const VIOLET = "#9B8CF2";
 
 const STATUS_PILL = {
   "on track": "pill pill-high",
@@ -91,20 +88,20 @@ function SalesChart({ snapshots, progress, eventDate }) {
     <div className="chart-box">
       <div className="legend" style={{ marginBottom: 10 }}>
         <span>
-          <i style={{ background: AMBER }} /> Tickets sold
+          <i style={{ background: ACTUAL }} /> Tickets sold
         </span>
         {hasAttendance && (
           <span>
-            <i style={{ background: TEAL }} /> Checked in
+            <i style={{ background: CHECKED_IN }} /> Checked in
           </span>
         )}
         {showProjection && (
           <span>
-            <i style={{ background: AMBER_SOFT }} /> Projection
+            <i className="legend-dash" style={{ borderColor: ACTUAL }} /> Projection
           </span>
         )}
         <span>
-          <i style={{ background: VIOLET }} /> Event day
+          <i className="legend-dash" /> Event day
         </span>
       </div>
       <ResponsiveContainer width="100%" height={220}>
@@ -122,15 +119,15 @@ function SalesChart({ snapshots, progress, eventDate }) {
             labelFormatter={(value) => formatDateTime(value)}
             formatter={(value, name) => [formatNumber(value), name]}
           />
-          <ReferenceLine x={eventStart} stroke={VIOLET} strokeDasharray="4 4" />
-          <Line type="monotone" dataKey="sold" name="Tickets sold" stroke={AMBER}
+          <ReferenceLine x={eventStart} stroke={INK_MUTED} strokeDasharray="4 4" />
+          <Line type="monotone" dataKey="sold" name="Tickets sold" stroke={ACTUAL}
             strokeWidth={2} dot={{ r: 3 }} connectNulls />
           {hasAttendance && (
-            <Line type="monotone" dataKey="attended" name="Checked in" stroke={TEAL}
+            <Line type="monotone" dataKey="attended" name="Checked in" stroke={CHECKED_IN}
               strokeWidth={2} dot={{ r: 3 }} connectNulls />
           )}
           {showProjection && (
-            <Line type="linear" dataKey="projected" name="Projected sales" stroke={AMBER_SOFT}
+            <Line type="linear" dataKey="projected" name="Projected sales" stroke={ACTUAL}
               strokeWidth={2} strokeDasharray="6 5" dot={false} connectNulls />
           )}
         </LineChart>
@@ -491,19 +488,18 @@ export function SalesTrackingSection({ event, onEventUpdated }) {
         <>
           <div className="sales-stats">
             <StatCard label="Sell-through" value={formatPct(progress.sell_through_pct)}
-              note={`${formatNumber(progress.tickets_sold_total)} of ${formatNumber(progress.capacity)}`}
-              accent={AMBER} />
+              note={`${formatNumber(progress.tickets_sold_total)} of ${formatNumber(progress.capacity)}`} />
             <StatCard label="Days until event" value={progress.days_until_event}
-              note={progress.phase} accent={VIOLET} />
+              note={progress.phase} />
             <StatCard label="Tickets / day"
               value={progress.velocity_tickets_per_day == null ? "-" : formatNumber(progress.velocity_tickets_per_day)}
-              note="last 7 days of snapshots" accent={AMBER} />
+              note="last 7 days of snapshots" />
             <StatCard label="Gate share" value={formatPct(progress.gate_share_pct)}
-              note="sold at the gate" accent={TEAL} />
+              note="sold at the gate" />
             <StatCard label="Show rate" value={formatPct(progress.show_rate_pct)}
-              note="checked in / sold" accent={TEAL} />
+              note="checked in / sold" />
             <StatCard label="Projected final sales" value={formatNumber(progress.projected_final_sales)}
-              note="capped at capacity" accent={AMBER_SOFT} />
+              note="capped at capacity" />
           </div>
           <SalesChart snapshots={snapshots} progress={progress} eventDate={event.event_date} />
           <p className="live-note">{progress.explanation}</p>

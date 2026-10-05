@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { INK, TRACK } from "../theme";
 
 export function PageHeader({ eyebrow, title, description, children }) {
   return (
@@ -81,11 +82,11 @@ export function LoadingPanel({ rows = 4 }) {
 const RING_RADIUS = 38;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
-export function ConfidenceRing({ score, size = 92, color = "#F0A860" }) {
+export function ConfidenceRing({ score, size = 92, color = INK }) {
   const clamped = Math.max(0, Math.min(1, score ?? 0));
   return (
     <svg width={size} height={size} viewBox="0 0 92 92" aria-hidden="true">
-      <circle cx="46" cy="46" r={RING_RADIUS} fill="none" stroke="#1E2227" strokeWidth="10" />
+      <circle cx="46" cy="46" r={RING_RADIUS} fill="none" stroke={TRACK} strokeWidth="10" />
       <circle
         cx="46"
         cy="46"
@@ -101,10 +102,10 @@ export function ConfidenceRing({ score, size = 92, color = "#F0A860" }) {
         x="46"
         y="51"
         textAnchor="middle"
-        fill="#F3F1EC"
-        fontFamily="Space Grotesk, sans-serif"
+        fill={INK}
+        fontFamily="Geist Variable, system-ui, sans-serif"
         fontSize="17"
-        fontWeight="700"
+        fontWeight="600"
       >
         {clamped.toFixed(2)}
       </text>
@@ -112,7 +113,7 @@ export function ConfidenceRing({ score, size = 92, color = "#F0A860" }) {
   );
 }
 
-export function ProgressBar({ value, max = 1, color = "#F0A860" }) {
+export function ProgressBar({ value, max = 1, color = INK }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <div className="bar-track">

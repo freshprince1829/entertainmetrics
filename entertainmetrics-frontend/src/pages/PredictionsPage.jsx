@@ -17,6 +17,7 @@ import {
   formatKes,
   formatNumber,
 } from "../format";
+import { FORECAST } from "../theme";
 
 const INPUT_FIELDS = [
   { key: "ticket_price", label: "Ticket price (KES)", min: "0" },
@@ -44,7 +45,7 @@ function ForecastResult({ prediction, event, capacity, fresh }) {
         <div>
           <h3>Predicted attendance</h3>
           <p className="metric">{formatNumber(prediction.predicted_attendance)}</p>
-          <ProgressBar value={prediction.predicted_attendance} max={capacity} color="#F0A860" />
+          <ProgressBar value={prediction.predicted_attendance} max={capacity} color={FORECAST} />
           <p className="metric-note">
             {Math.round(utilisation * 100)}% of {formatNumber(capacity)} capacity
           </p>

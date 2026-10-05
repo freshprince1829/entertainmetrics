@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
 import "./App.css";
-import { useApiData } from "./api";
+import { API_BASE, useApiData } from "./api";
 import { EmptyState, Icon, LoadingPanel } from "./components/ui";
 
 // Pages are loaded on demand so the charting library is not part of the
@@ -104,14 +104,19 @@ function App() {
         <aside className={menuOpen ? "sidebar open" : "sidebar"}>
           <div className="brand">
             <BrandMark />
+            <div className="brand-name">EntertainMetrics</div>
+          </div>
+
+          <div className="workspace-card">
+            <span className="workspace-avatar">T</span>
             <div>
-              <div className="brand-name">EntertainMetrics</div>
-              <div className="brand-tag">Predictive Analytics</div>
+              <div className="workspace-name">Tito&apos;s workspace</div>
+              <div className="workspace-sub">Predictive analytics</div>
             </div>
           </div>
 
           <nav>
-            <div className="nav-section">Workspace</div>
+            <div className="nav-section">Platform</div>
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -127,12 +132,20 @@ function App() {
           </nav>
 
           <div className="sidebar-footer">
+            <div className="engine-card">
+              <small>Prediction engine</small>
+              <strong>v1 · rule-based</strong>
+              <p>Explainable estimates, not guarantees.</p>
+              <a href={`${API_BASE}/docs`} target="_blank" rel="noreferrer">
+                API reference <Icon name="arrow" size={14} />
+              </a>
+            </div>
             <ApiStatus />
             <div className="sidebar-user">
-              <small>Workspace</small>
+              <span className="avatar">T</span>
               <div>
-                <span className="avatar">T</span>
-                Tito
+                <div className="user-name">Tito</div>
+                <div className="user-sub">Workspace owner</div>
               </div>
             </div>
           </div>

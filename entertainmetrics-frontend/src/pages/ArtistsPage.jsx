@@ -12,6 +12,7 @@ import {
   StatCard,
 } from "../components/ui";
 import { formatCompact, formatNumber, thumbGradient } from "../format";
+import { INK } from "../theme";
 
 const initialForm = {
   artist_name: "",
@@ -26,9 +27,9 @@ const initialForm = {
 };
 
 const SCORE_FIELDS = [
-  { key: "engagement_score", label: "Engagement", color: "#F0A860" },
-  { key: "headline_score", label: "Headline", color: "#4FD1C5" },
-  { key: "market_strength_score", label: "Market strength", color: "#9B8CF2" },
+  { key: "engagement_score", label: "Engagement", color: INK },
+  { key: "headline_score", label: "Headline", color: INK },
+  { key: "market_strength_score", label: "Market strength", color: INK },
 ];
 
 function numberOrNull(value) {
@@ -209,18 +210,16 @@ function ArtistsPage() {
       </Notice>
 
       <section className="summary-grid">
-        <StatCard label="Artists on roster" value={formatNumber(artists.length)} accent="#F0A860" />
-        <StatCard label="Genres" value={formatNumber(genres.length)} accent="#4FD1C5" />
+        <StatCard label="Artists on roster" value={formatNumber(artists.length)} />
+        <StatCard label="Genres" value={formatNumber(genres.length)} />
         <StatCard
           label="Avg. engagement score"
           value={stats.avgEngagement == null ? "-" : stats.avgEngagement.toFixed(1)}
-          accent="#9B8CF2"
         />
         <StatCard
           label="Complete score profiles"
           value={`${stats.complete}/${artists.length}`}
           note="all three scores filled in"
-          accent="#5FD9B4"
         />
         <StatCard label="Combined audience reach" value={formatCompact(stats.reach)} note="streams + subscribers + followers" />
       </section>
