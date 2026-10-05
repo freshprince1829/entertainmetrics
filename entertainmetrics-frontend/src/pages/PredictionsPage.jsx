@@ -296,7 +296,7 @@ function PredictionsPage() {
                 </thead>
                 <tbody>
                   {history.map((prediction) => (
-                    <tr key={prediction.id ?? `${prediction.event_id}-${prediction.created_at}`}>
+                    <tr key={prediction.id}>
                       <td className="nowrap">{formatDateTime(prediction.created_at)}</td>
                       <td>
                         <div className="event-title">
