@@ -411,6 +411,43 @@ def create_event_artist(
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
 
+@app.delete("/event-artists/{event_artist_id}", status_code=204)
+def delete_event_artist(event_artist_id: int, db: Session = Depends(get_db)):
+    """Remove one artist from one event's lineup (e.g. they pulled out).
+    The artist stays in the system."""
+    try:
+        event_artist = db.get(models.EventArtist, event_artist_id)
+        if event_artist is None:
+            raise HTTPException(status_code=404, detail="Lineup entry not found")
+        crud.delete_event_artist(db, event_artist)
+        return Response(status_code=204)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/artists/{artist_id}", response_model=schemas.ArtistDeleteResponse)
+def delete_artist(artist_id: int, db: Session = Depends(get_db)):
+    """Delete an artist from the system, including all their lineup slots.
+    Saved predictions are historical records and are not changed."""
+    try:
+        artist = db.get(models.Artist, artist_id)
+        if artist is None:
+            raise HTTPException(status_code=404, detail="Artist not found")
+        artist_name = artist.artist_name
+        removed = crud.delete_artist(db, artist)
+        return {
+            "deleted_artist_id": artist_id,
+            "artist_name": artist_name,
+            "lineup_entries_removed": removed,
+        }
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
 @app.get("/events/{event_id}/lineup", response_model=list[schemas.EventArtistResponse])
 def get_event_lineup(event_id: int, db: Session = Depends(get_db)):
     try:
