@@ -26,6 +26,15 @@ LIVE_STATUS_TOLERANCE_PCT = 10.0
 # completed events.
 MIN_EVENTS_FOR_PATTERNS = 2
 
+# Prediction integration (only used with enough snapshots).
+MIN_SNAPSHOTS_FOR_SALES_SIGNAL = 2
+SALES_PROJECTION_WEIGHT = 0.6
+BASE_FORMULA_WEIGHT = 0.4
+SNAPSHOT_CONFIDENCE_STEP = 0.01
+MAX_SNAPSHOT_CONFIDENCE_BOOST = 0.05
+# Upper bound on the learned gate share, so gate / (1 - gate) stays finite.
+MAX_GATE_SHARE = 0.9
+
 CUMULATIVE_FIELDS = (
     "tickets_sold_total",
     "gate_tickets_sold",
@@ -345,4 +354,85 @@ def compute_event_day_patterns(
         "min_events_required": MIN_EVENTS_FOR_PATTERNS,
         "sufficient_history": sufficient,
         "explanation": explanation,
+    }
+
+
+def apply_sales_signals(
+    *,
+    base_attendance: int,
+    base_confidence: float,
+    capacity: int,
+    event: models.Event,
+    snapshots: list[models.TicketSalesSnapshot],
+    patterns: dict,
+    today: date,
+) -> dict | None:
+    """Blend ticket sales evidence into a base prediction.
+
+    Returns None with fewer than MIN_SNAPSHOTS_FOR_SALES_SIGNAL snapshots, so
+    the prediction stays exactly as the base formula produced it.
+    """
+    ordered = sort_snapshots(snapshots)
+    if len(ordered) < MIN_SNAPSHOTS_FOR_SALES_SIGNAL:
+        return None
+
+    latest = ordered[-1]
+    velocity = sales_velocity(ordered)
+    days_until_event = (event.event_date - today).days
+    projected = projected_final_sales(
+        latest.tickets_sold_total, velocity, days_until_event, capacity
+    )
+
+    if patterns["sufficient_history"]:
+        gate_share = min(patterns["avg_gate_share_pct"] / 100, MAX_GATE_SHARE)
+        show_rate = patterns["avg_show_rate_pct"] / 100
+        # If a share g of all tickets is usually sold at the gate, A advance
+        # tickets imply A * g / (1 - g) gate tickets in total.
+        advance = projected - latest.gate_tickets_sold
+        expected_gate = max(
+            latest.gate_tickets_sold, advance * gate_share / (1 - gate_share)
+        )
+        expected_tickets = min(capacity, advance + expected_gate)
+        sales_estimate = expected_tickets * show_rate
+        learned_note = (
+            f"Learned show rate ({patterns['avg_show_rate_pct']}%) and gate share "
+            f"({patterns['avg_gate_share_pct']}%) from {patterns['events_used']} "
+            f"completed events were applied: about {expected_gate:,.0f} gate tickets "
+            f"expected, {expected_tickets:,.0f} tickets in total, of whom "
+            f"{sales_estimate:,.0f} are expected to attend."
+        )
+    else:
+        sales_estimate = projected
+        learned_note = (
+            "Learned show rate and gate share were not applied because there is not "
+            f"enough history ({patterns['events_used']} of "
+            f"{patterns['min_events_required']} completed events needed), so projected "
+            "ticket sales are used as the attendance estimate."
+        )
+
+    blended = (
+        SALES_PROJECTION_WEIGHT * sales_estimate + BASE_FORMULA_WEIGHT * base_attendance
+    )
+    attendance = int(max(0, min(capacity, round(blended))))
+
+    boost = min(len(ordered) * SNAPSHOT_CONFIDENCE_STEP, MAX_SNAPSHOT_CONFIDENCE_BOOST)
+    confidence = round(max(0.3, min(base_confidence + boost, 0.95)), 2)
+
+    velocity_text = f"{velocity:,.1f} tickets/day" if velocity is not None else "no velocity"
+    insight = (
+        f"Ticket sales projection used: {len(ordered)} snapshots, latest "
+        f"{latest.tickets_sold_total:,} sold at {velocity_text}, projecting "
+        f"{projected:,} final ticket sales. {learned_note} The final estimate blends "
+        f"{SALES_PROJECTION_WEIGHT:.0%} sales-based estimate ({sales_estimate:,.0f}) "
+        f"with {BASE_FORMULA_WEIGHT:.0%} base formula ({base_attendance:,}). "
+        f"Confidence includes +{boost:.2f} for {len(ordered)} sales snapshots."
+    )
+
+    return {
+        "predicted_attendance": attendance,
+        "confidence_score": confidence,
+        "projected_final_sales": projected,
+        "sales_estimate": sales_estimate,
+        "learned_patterns_used": patterns["sufficient_history"],
+        "insight": insight,
     }

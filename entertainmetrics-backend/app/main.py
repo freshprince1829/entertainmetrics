@@ -435,6 +435,29 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
         )
 
         model_version = "v1-rule-based"
+        sales_signal = None
+        snapshots = crud.get_sales_snapshots(db, event.id)
+        if len(snapshots) >= sales.MIN_SNAPSHOTS_FOR_SALES_SIGNAL:
+            patterns = sales.compute_event_day_patterns(
+                crud.get_events_with_snapshots(db), date.today(), exclude_event_id=event.id
+            )
+            sales_signal = sales.apply_sales_signals(
+                base_attendance=result["predicted_attendance"],
+                base_confidence=result["confidence_score"],
+                capacity=data.capacity,
+                event=event,
+                snapshots=snapshots,
+                patterns=patterns,
+                today=date.today(),
+            )
+        if sales_signal is not None:
+            model_version = "v1-rule-based+sales"
+            result["predicted_attendance"] = sales_signal["predicted_attendance"]
+            result["predicted_revenue"] = round(
+                sales_signal["predicted_attendance"] * data.ticket_price, 2
+            )
+            result["confidence_score"] = sales_signal["confidence_score"]
+
         if result["linked_artist_count"] > 0:
             insight_summary = (
                 f"Rule-based estimate using {result['linked_artist_count']} linked artists "
@@ -447,6 +470,8 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
                 f"prediction. Dynamic confidence score is {result['confidence_score']:.2f}, "
                 "and confidence is lower because lineup data is missing."
             )
+        if sales_signal is not None:
+            insight_summary += " " + sales_signal["insight"]
 
         prediction_record = {
             "event_id": data.event_id,
