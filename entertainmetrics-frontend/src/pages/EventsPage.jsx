@@ -12,6 +12,7 @@ import {
   ProgressBar,
   StatCard,
 } from "../components/ui";
+import { SalesTrackingSection } from "../components/SalesTracking";
 import {
   canRecordActuals,
   formatDate,
@@ -336,7 +337,11 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
       </div>
 
       {canRecordActuals(event.event_date) ? (
-        <ActualsForm event={event} onSaved={onEventUpdated} />
+        <ActualsForm
+          key={`${event.actual_attendance}-${event.revenue}`}
+          event={event}
+          onSaved={onEventUpdated}
+        />
       ) : (
         <p className="panel-subtext">
           Actual results can be recorded once the event date ({formatDate(event.event_date)}) arrives.
@@ -351,6 +356,8 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
           <Icon name="spark" size={16} /> Recommendations
         </Link>
       </div>
+
+      <SalesTrackingSection event={event} onEventUpdated={onEventUpdated} />
 
       <h2 className="drawer-heading">Lineup</h2>
       <p className="panel-subtext">

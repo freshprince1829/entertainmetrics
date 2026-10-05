@@ -1,12 +1,12 @@
 from datetime import date
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db
-from . import crud, models, schemas
+from . import crud, models, sales, schemas
 
 Base.metadata.create_all(bind=engine)
 
@@ -245,6 +245,141 @@ def update_event_actuals(
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
 
+def _get_event_or_404(db: Session, event_id: int) -> models.Event:
+    event = db.get(models.Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
+
+@app.post(
+    "/events/{event_id}/sales-snapshots",
+    response_model=schemas.SalesSnapshotResponse,
+    status_code=201,
+)
+def create_sales_snapshot(
+    event_id: int,
+    snapshot: schemas.SalesSnapshotCreate,
+    db: Session = Depends(get_db),
+):
+    try:
+        event = _get_event_or_404(db, event_id)
+        existing = crud.get_sales_snapshots(db, event_id)
+        error_message = sales.validate_new_snapshot(event, existing, snapshot)
+        if error_message:
+            raise HTTPException(status_code=400, detail=error_message)
+        return crud.create_sales_snapshot(db, event_id, snapshot)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/sales-snapshots",
+    response_model=list[schemas.SalesSnapshotResponse],
+)
+def list_sales_snapshots(event_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        return crud.get_sales_snapshots(db, event_id)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/events/{event_id}/sales-snapshots/{snapshot_id}", status_code=204)
+def delete_sales_snapshot(event_id: int, snapshot_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        snapshot = db.get(models.TicketSalesSnapshot, snapshot_id)
+        if snapshot is None or snapshot.event_id != event_id:
+            raise HTTPException(status_code=404, detail="Snapshot not found")
+        crud.delete_sales_snapshot(db, snapshot)
+        return Response(status_code=204)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/sales-progress",
+    response_model=schemas.SalesProgressResponse,
+)
+def get_sales_progress(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        return sales.compute_progress(event, snapshots, date.today())
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/live-vs-predicted",
+    response_model=schemas.LiveVsPredictedResponse,
+)
+def get_live_vs_predicted(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        latest_prediction = crud.get_latest_prediction(db, event_id)
+        return sales.compute_live_vs_predicted(
+            event, snapshots, latest_prediction, date.today()
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/analytics/event-day-patterns",
+    response_model=schemas.EventDayPatternsResponse,
+)
+def get_event_day_patterns(db: Session = Depends(get_db)):
+    try:
+        events = crud.get_events_with_snapshots(db)
+        return sales.compute_event_day_patterns(events, date.today())
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.post(
+    "/events/{event_id}/finalize-actuals",
+    response_model=schemas.FinalizeActualsResponse,
+)
+def finalize_actuals(event_id: int, db: Session = Depends(get_db)):
+    """Explicit close-out: copy the latest snapshot into the event's final
+    actuals. Snapshots never change actuals on their own."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        if event.event_date > date.today():
+            raise HTTPException(
+                status_code=400,
+                detail="An event can only be closed out on or after its event date",
+            )
+        snapshots = sales.sort_snapshots(crud.get_sales_snapshots(db, event_id))
+        if not snapshots:
+            raise HTTPException(
+                status_code=400,
+                detail="No sales snapshots recorded; record actuals manually instead",
+            )
+        preview = sales.final_actuals_preview(event, snapshots[-1])
+        crud.finalize_event_actuals(
+            db, event, preview["actual_attendance"], preview["revenue"]
+        )
+        return {"event_id": event.id, **preview}
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
 @app.post("/artists", response_model=schemas.ArtistResponse)
 def create_artist(artist: schemas.ArtistCreate, db: Session = Depends(get_db)):
     try:
@@ -300,6 +435,29 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
         )
 
         model_version = "v1-rule-based"
+        sales_signal = None
+        snapshots = crud.get_sales_snapshots(db, event.id)
+        if len(snapshots) >= sales.MIN_SNAPSHOTS_FOR_SALES_SIGNAL:
+            patterns = sales.compute_event_day_patterns(
+                crud.get_events_with_snapshots(db), date.today(), exclude_event_id=event.id
+            )
+            sales_signal = sales.apply_sales_signals(
+                base_attendance=result["predicted_attendance"],
+                base_confidence=result["confidence_score"],
+                capacity=data.capacity,
+                event=event,
+                snapshots=snapshots,
+                patterns=patterns,
+                today=date.today(),
+            )
+        if sales_signal is not None:
+            model_version = "v1-rule-based+sales"
+            result["predicted_attendance"] = sales_signal["predicted_attendance"]
+            result["predicted_revenue"] = round(
+                sales_signal["predicted_attendance"] * data.ticket_price, 2
+            )
+            result["confidence_score"] = sales_signal["confidence_score"]
+
         if result["linked_artist_count"] > 0:
             insight_summary = (
                 f"Rule-based estimate using {result['linked_artist_count']} linked artists "
@@ -312,6 +470,8 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
                 f"prediction. Dynamic confidence score is {result['confidence_score']:.2f}, "
                 "and confidence is lower because lineup data is missing."
             )
+        if sales_signal is not None:
+            insight_summary += " " + sales_signal["insight"]
 
         prediction_record = {
             "event_id": data.event_id,

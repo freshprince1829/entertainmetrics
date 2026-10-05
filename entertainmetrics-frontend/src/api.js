@@ -48,6 +48,10 @@ export function apiPatch(path, body) {
   });
 }
 
+export function apiDelete(path) {
+  return request(path, { method: "DELETE" });
+}
+
 /**
  * Loads `path` with GET. Pass null to skip loading.
  * `reload()` refetches in the background while keeping the current data.

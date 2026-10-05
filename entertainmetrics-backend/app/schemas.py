@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EventCreate(BaseModel):
@@ -194,3 +194,103 @@ class PredictedVsActualResponse(BaseModel):
     mean_revenue_error_pct: float | None = None
     items: list[PredictedVsActualItem]
     awaiting_results: list[AwaitingResultsItem] = []
+
+
+class SalesSnapshotCreate(BaseModel):
+    recorded_at: datetime
+    tickets_sold_total: int = Field(ge=0)
+    gate_tickets_sold: int = Field(default=0, ge=0)
+    attendance_checked_in: int | None = Field(default=None, ge=0)
+    revenue_to_date: float | None = Field(default=None, ge=0)
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def check_consistency(self):
+        if self.gate_tickets_sold > self.tickets_sold_total:
+            raise ValueError("gate_tickets_sold cannot exceed tickets_sold_total")
+        if (
+            self.attendance_checked_in is not None
+            and self.attendance_checked_in > self.tickets_sold_total
+        ):
+            raise ValueError("attendance_checked_in cannot exceed tickets_sold_total")
+        return self
+
+
+class SalesSnapshotResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_id: int
+    recorded_at: datetime
+    tickets_sold_total: int
+    gate_tickets_sold: int
+    attendance_checked_in: int | None = None
+    revenue_to_date: float | None = None
+    notes: str | None = None
+    created_at: datetime | None = None
+
+    @field_validator("recorded_at")
+    @classmethod
+    def recorded_at_as_utc(cls, value: datetime) -> datetime:
+        # SQLite returns naive datetimes; they are stored as UTC.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+
+class FinalizePreview(BaseModel):
+    snapshot_id: int
+    recorded_at: datetime
+    actual_attendance: int
+    attendance_source: str
+    revenue: float | None = None
+    revenue_source: str
+
+
+class SalesProgressResponse(BaseModel):
+    event_id: int
+    capacity: int
+    phase: str
+    days_until_event: int
+    snapshot_count: int
+    latest_recorded_at: datetime | None = None
+    tickets_sold_total: int | None = None
+    gate_tickets_sold: int | None = None
+    attendance_checked_in: int | None = None
+    revenue_to_date: float | None = None
+    sell_through_pct: float | None = None
+    velocity_tickets_per_day: float | None = None
+    gate_share_pct: float | None = None
+    show_rate_pct: float | None = None
+    projected_final_sales: int | None = None
+    finalize_preview: FinalizePreview | None = None
+    explanation: str
+
+
+class LiveVsPredictedResponse(BaseModel):
+    event_id: int
+    phase: str
+    recorded_at: datetime | None = None
+    predicted_attendance: int | None = None
+    tickets_sold_so_far: int | None = None
+    attendance_so_far: int | None = None
+    tickets_percent_of_prediction: float | None = None
+    attendance_percent_of_prediction: float | None = None
+    status: str | None = None
+    status_basis: str
+    tolerance_pct: float
+    is_final: bool
+    explanation: str
+
+
+class EventDayPatternsResponse(BaseModel):
+    avg_gate_share_pct: float | None = None
+    avg_show_rate_pct: float | None = None
+    events_used: int
+    min_events_required: int
+    sufficient_history: bool
+    explanation: str
+
+
+class FinalizeActualsResponse(FinalizePreview):
+    event_id: int

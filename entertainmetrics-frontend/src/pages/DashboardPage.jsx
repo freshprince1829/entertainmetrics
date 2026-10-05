@@ -12,12 +12,14 @@ import {
 } from "recharts";
 import { useApiData } from "../api";
 import { LoadingPanel, Notice } from "../components/ui";
+import { EventDayPatternsCard, LiveEventCard } from "../components/SalesTracking";
 import {
   canRecordActuals,
   confidencePillClass,
   formatCompact,
   formatDate,
   formatKes,
+  isUpcoming,
   THUMB_GRADIENTS,
 } from "../format";
 
@@ -60,6 +62,10 @@ function DashboardPage() {
     comparisonQuery.error;
 
   const comparisonItems = useMemo(() => comparison?.items ?? [], [comparison]);
+  // Events happening today are shown with live (not final) numbers.
+  const liveEvents = (allEventsQuery.data ?? []).filter(
+    (event) => canRecordActuals(event.event_date) && isUpcoming(event.event_date),
+  );
   const awaitingItems = comparison?.awaiting_results ?? [];
 
   const averageConfidence = useMemo(() => {
@@ -186,6 +192,13 @@ function DashboardPage() {
           </p>
           <p className="metric-note">per event, rule-based</p>
         </div>
+      </section>
+
+      <section className="summary-grid">
+        {liveEvents.map((event) => (
+          <LiveEventCard key={event.id} event={event} showName />
+        ))}
+        <EventDayPatternsCard />
       </section>
 
       <section className="hero-grid">

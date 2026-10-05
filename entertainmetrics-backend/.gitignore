@@ -3,4 +3,4 @@ __pycache__/
 node_modules/
 .env
 *.pyc
-.DS_Store
+.DS_Store.pytest_cache/
