@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart,
@@ -10,31 +10,20 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { useApiData } from "../api";
+import { LoadingPanel, Notice } from "../components/ui";
+import {
+  confidencePillClass,
+  formatCompact,
+  formatKes,
+  THUMB_GRADIENTS,
+} from "../format";
 
 const AMBER = "#F0A860";
 const TEAL = "#4FD1C5";
 const VIOLET = "#9B8CF2";
-const THUMB_GRADIENTS = [
-  "linear-gradient(135deg, #F0A860, #9B6B3A)",
-  "linear-gradient(135deg, #4FD1C5, #2C8C82)",
-  "linear-gradient(135deg, #9B8CF2, #6657B0)",
-];
 const BAR_COLORS = [AMBER, TEAL, VIOLET];
 const RING_CIRCUMFERENCE = 2 * Math.PI * 38;
-
-function confidencePillClass(score) {
-  if (score >= 0.8) return "pill pill-high";
-  if (score >= 0.6) return "pill pill-mid";
-  return "pill pill-low";
-}
-
-function formatKes(value) {
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    maximumFractionDigits: 0,
-  })}`;
-}
 
 function formatError(value) {
   return value === null || value === undefined
@@ -43,56 +32,30 @@ function formatError(value) {
 }
 
 function DashboardPage() {
-  const [summary, setSummary] = useState(null);
-  const [recentEvents, setRecentEvents] = useState([]);
-  const [recentPredictions, setRecentPredictions] = useState([]);
-  const [comparison, setComparison] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const summaryQuery = useApiData("/dashboard/summary");
+  const eventsQuery = useApiData("/dashboard/recent-events?limit=5");
+  const predictionsQuery = useApiData("/dashboard/recent-predictions?limit=5");
+  const comparisonQuery = useApiData("/dashboard/predicted-vs-actual");
+  const allEventsQuery = useApiData("/events");
   const [now] = useState(() => new Date());
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const [summaryRes, eventsRes, predictionsRes, comparisonRes] =
-          await Promise.all([
-            fetch(`${API_BASE}/dashboard/summary`),
-            fetch(`${API_BASE}/dashboard/recent-events?limit=5`),
-            fetch(`${API_BASE}/dashboard/recent-predictions?limit=5`),
-            fetch(`${API_BASE}/dashboard/predicted-vs-actual`),
-          ]);
-
-        const summaryData = await summaryRes.json();
-        const eventsData = await eventsRes.json();
-        const predictionsData = await predictionsRes.json();
-        const comparisonData = await comparisonRes.json();
-
-        setSummary(summaryData);
-        setRecentEvents(eventsData);
-        setRecentPredictions(predictionsData);
-        setComparison(comparisonData);
-      } catch (error) {
-        console.error("Failed to load dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadDashboard();
-  }, []);
-
-  const attendanceChartData = useMemo(() => {
-    return recentPredictions.map((prediction) => ({
-      name: `Event ${prediction.event_id}`,
-      attendance: prediction.predicted_attendance,
-    }));
-  }, [recentPredictions]);
-
-  const revenueChartData = useMemo(() => {
-    return recentPredictions.map((prediction) => ({
-      name: `Event ${prediction.event_id}`,
-      revenue: prediction.predicted_revenue,
-    }));
-  }, [recentPredictions]);
+  const summary = summaryQuery.data;
+  const comparison = comparisonQuery.data;
+  const recentEvents = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
+  const recentPredictions = useMemo(
+    () => predictionsQuery.data ?? [],
+    [predictionsQuery.data],
+  );
+  const loading =
+    summaryQuery.loading ||
+    eventsQuery.loading ||
+    predictionsQuery.loading ||
+    comparisonQuery.loading;
+  const loadError =
+    summaryQuery.error ||
+    eventsQuery.error ||
+    predictionsQuery.error ||
+    comparisonQuery.error;
 
   const comparisonItems = useMemo(() => comparison?.items ?? [], [comparison]);
 
@@ -118,14 +81,25 @@ function DashboardPage() {
 
   const eventNameById = useMemo(() => {
     const map = {};
-    recentEvents.forEach((event) => {
+    [...(allEventsQuery.data ?? []), ...recentEvents].forEach((event) => {
       map[event.id] = event.event_name;
     });
     comparisonItems.forEach((item) => {
       map[item.event_id] = item.event_name;
     });
     return map;
-  }, [recentEvents, comparisonItems]);
+  }, [allEventsQuery.data, recentEvents, comparisonItems]);
+
+  // Recent predictions arrive newest-first; reverse so charts read left to right.
+  const predictionChartData = useMemo(
+    () =>
+      [...recentPredictions].reverse().map((prediction) => ({
+        name: eventNameById[prediction.event_id] ?? `Event ${prediction.event_id}`,
+        attendance: prediction.predicted_attendance,
+        revenue: prediction.predicted_revenue,
+      })),
+    [recentPredictions, eventNameById],
+  );
 
   const hour = now.getHours();
   const greeting =
@@ -138,7 +112,20 @@ function DashboardPage() {
   });
 
   if (loading) {
-    return <p>Loading dashboard...</p>;
+    return (
+      <div className="page-stack">
+        <LoadingPanel rows={2} />
+        <LoadingPanel rows={5} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Notice tone="error">
+        Could not load the dashboard: {loadError.message}
+      </Notice>
+    );
   }
 
   return (
@@ -355,7 +342,7 @@ function DashboardPage() {
               <BarChart data={comparisonItems} barGap={5}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="event_name" />
-                <YAxis />
+                <YAxis tickFormatter={(v) => formatCompact(v)} width={48} />
                 <Tooltip
                   cursor={{ fill: "rgba(255,255,255,0.03)" }}
                   formatter={(value) => formatKes(value)}
@@ -411,7 +398,7 @@ function DashboardPage() {
           <h2>Predicted attendance</h2>
           <div className="chart-box">
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={attendanceChartData}>
+              <BarChart data={predictionChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
                 <YAxis />
@@ -431,10 +418,10 @@ function DashboardPage() {
           <h2>Predicted revenue</h2>
           <div className="chart-box">
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={revenueChartData}>
+              <BarChart data={predictionChartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" />
-                <YAxis />
+                <YAxis tickFormatter={(v) => formatCompact(v)} width={48} />
                 <Tooltip
                   cursor={{ fill: "rgba(255,255,255,0.03)" }}
                   formatter={(value) => [formatKes(value), "Revenue"]}

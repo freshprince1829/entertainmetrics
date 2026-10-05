@@ -1,0 +1,66 @@
+export function formatKes(value) {
+  if (value === null || value === undefined) return "-";
+  return `KES ${Number(value).toLocaleString("en-KE", {
+    maximumFractionDigits: 0,
+  })}`;
+}
+
+export function formatNumber(value) {
+  if (value === null || value === undefined) return "-";
+  return Number(value).toLocaleString("en-KE", { maximumFractionDigits: 0 });
+}
+
+export function formatCompact(value) {
+  if (value === null || value === undefined) return "-";
+  return Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+export function formatDate(value) {
+  if (!value) return "-";
+  // Dates from the API are plain YYYY-MM-DD; parse as local, not UTC.
+  const [y, m, d] = String(value).slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export function formatDateTime(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function isUpcoming(eventDate) {
+  const now = new Date();
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+  return String(eventDate) >= today;
+}
+
+export function confidencePillClass(score) {
+  if (score >= 0.8) return "pill pill-high";
+  if (score >= 0.6) return "pill pill-mid";
+  return "pill pill-low";
+}
+
+export const THUMB_GRADIENTS = [
+  "linear-gradient(135deg, #F0A860, #9B6B3A)",
+  "linear-gradient(135deg, #4FD1C5, #2C8C82)",
+  "linear-gradient(135deg, #9B8CF2, #6657B0)",
+];
+
+export function thumbGradient(id) {
+  return THUMB_GRADIENTS[Number(id) % THUMB_GRADIENTS.length];
+}

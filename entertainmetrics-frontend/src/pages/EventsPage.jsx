@@ -1,6 +1,26 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { apiPost, useApiData } from "../api";
+import {
+  EmptyState,
+  Field,
+  Icon,
+  LoadingPanel,
+  Modal,
+  Notice,
+  PageHeader,
+  ProgressBar,
+  StatCard,
+} from "../components/ui";
+import {
+  formatDate,
+  formatKes,
+  formatNumber,
+  isUpcoming,
+  thumbGradient,
+} from "../format";
 
-const API_BASE = "http://127.0.0.1:8000";
+const EVENT_TYPE_SUGGESTIONS = ["Concert", "Festival", "Comedy", "Jazz", "Club Night", "Conference"];
 
 const initialForm = {
   event_name: "",
@@ -23,136 +43,20 @@ const initialLineupForm = {
   set_duration_minutes: "",
 };
 
-function EventsPage() {
-  const [events, setEvents] = useState([]);
+function NewEventModal({ onClose, onCreated }) {
   const [formData, setFormData] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const [artists, setArtists] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState("");
-  const [lineup, setLineup] = useState([]);
-  const [lineupLoading, setLineupLoading] = useState(false);
-  const [lineupFormData, setLineupFormData] = useState(initialLineupForm);
-  const [lineupSubmitting, setLineupSubmitting] = useState(false);
-  const [lineupMessage, setLineupMessage] = useState("");
-
-  async function loadEvents() {
-    try {
-      const res = await fetch(`${API_BASE}/events`);
-      const data = await res.json();
-      setEvents(data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function loadArtists() {
-    try {
-      const res = await fetch(`${API_BASE}/artists`);
-      const data = await res.json();
-      setArtists(data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function loadLineup(eventId) {
-    setLineupLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/events/${eventId}/lineup`);
-      const data = await res.json();
-      setLineup(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLineupLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadEvents();
-    loadArtists();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedEventId) {
-      setLineup([]);
-      return;
-    }
-    loadLineup(selectedEventId);
-  }, [selectedEventId]);
-
-  function getArtistName(artistId) {
-    const artist = artists.find((a) => a.id === artistId);
-    return artist ? artist.artist_name : `Artist #${artistId}`;
-  }
-
-  function handleLineupChange(event) {
-    const { name, value, type, checked } = event.target;
-    setLineupFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  }
-
-  async function handleLineupSubmit(event) {
-    event.preventDefault();
-    setLineupSubmitting(true);
-    setLineupMessage("");
-
-    const payload = {
-      event_id: Number(selectedEventId),
-      artist_id: Number(lineupFormData.artist_id),
-      role: lineupFormData.role || null,
-      performance_order: lineupFormData.performance_order
-        ? Number(lineupFormData.performance_order)
-        : null,
-      is_headliner: lineupFormData.is_headliner,
-      set_duration_minutes: lineupFormData.set_duration_minutes
-        ? Number(lineupFormData.set_duration_minutes)
-        : null,
-    };
-
-    try {
-      const res = await fetch(`${API_BASE}/event-artists`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setLineupMessage(data.detail || "Failed to add artist to lineup");
-        return;
-      }
-
-      setLineupMessage("Artist added to lineup successfully");
-      setLineupFormData(initialLineupForm);
-      loadLineup(selectedEventId);
-    } catch (err) {
-      console.error(err);
-      setLineupMessage("Something went wrong while updating the lineup");
-    } finally {
-      setLineupSubmitting(false);
-    }
-  }
+  const [error, setError] = useState("");
 
   function handleChange(event) {
     const { name, value } = event.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     setSubmitting(true);
-    setMessage("");
+    setError("");
 
     const payload = {
       event_name: formData.event_name,
@@ -170,284 +74,491 @@ function EventsPage() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/events`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setMessage(data.detail || "Failed to create event");
-        return;
-      }
-
-      setMessage("Event created successfully");
-      setFormData(initialForm);
-      loadEvents();
+      const created = await apiPost("/events", payload);
+      onCreated(created);
     } catch (err) {
-      console.error(err);
-      setMessage("Something went wrong while creating the event");
-    } finally {
+      setError(err.message || "Failed to create event");
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="page-stack">
-      <div className="panel">
-        <h1>Events</h1>
-        <p className="panel-subtext">
-          Create and manage entertainment events for analytics and forecasting.
-        </p>
-
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <input
-            name="event_name"
-            placeholder="Event Name"
-            value={formData.event_name}
-            onChange={handleChange}
-            required
-          />
-          <input
-            name="event_type"
-            placeholder="Event Type"
-            value={formData.event_type}
-            onChange={handleChange}
-            required
-          />
-          <input
-            name="event_date"
-            type="date"
-            value={formData.event_date}
-            onChange={handleChange}
-            required
-          />
-          <input
-            name="venue"
-            placeholder="Venue"
-            value={formData.venue}
-            onChange={handleChange}
-            required
-          />
-          <input
-            name="city"
-            placeholder="City"
-            value={formData.city}
-            onChange={handleChange}
-            required
-          />
-          <input
-            name="ticket_price"
-            placeholder="Ticket Price"
-            value={formData.ticket_price}
-            onChange={handleChange}
-            type="number"
-            required
-          />
-          <input
-            name="marketing_spend"
-            placeholder="Marketing Spend"
-            value={formData.marketing_spend}
-            onChange={handleChange}
-            type="number"
-            required
-          />
-          <input
-            name="capacity"
-            placeholder="Capacity"
-            value={formData.capacity}
-            onChange={handleChange}
-            type="number"
-            required
-          />
-          <input
-            name="actual_attendance"
-            placeholder="Actual Attendance"
-            value={formData.actual_attendance}
-            onChange={handleChange}
-            type="number"
-          />
-          <input
-            name="revenue"
-            placeholder="Revenue"
-            value={formData.revenue}
-            onChange={handleChange}
-            type="number"
-          />
-
-          <button type="submit" className="primary-button" disabled={submitting}>
-            {submitting ? "Creating..." : "Create Event"}
-          </button>
-        </form>
-
-        {message && <p className="form-message">{message}</p>}
-      </div>
-
-      <div className="panel">
-        <h2>Event Records</h2>
-        {events.length === 0 ? (
-          <p>No events found.</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Date</th>
-                  <th>City</th>
-                  <th>Venue</th>
-                  <th>Ticket Price</th>
-                  <th>Capacity</th>
-                  <th>Attendance</th>
-                  <th>Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.event_name}</td>
-                    <td>{event.event_type}</td>
-                    <td>{event.event_date}</td>
-                    <td>{event.city}</td>
-                    <td>{event.venue}</td>
-                    <td>KES {event.ticket_price}</td>
-                    <td>{event.capacity}</td>
-                    <td>{event.actual_attendance ?? "-"}</td>
-                    <td>{event.revenue ? `KES ${event.revenue}` : "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="panel">
-        <h2>Event Lineup</h2>
-        <p className="panel-subtext">
-          Link artists to an event to power artist-aware predictions.
-        </p>
-
+    <Modal
+      title="New event"
+      description="Event details feed the prediction and recommendation engines."
+      onClose={onClose}
+    >
+      <form onSubmit={handleSubmit}>
+        <div className="form-section">Event details</div>
         <div className="form-grid">
-          <select
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
-          >
-            <option value="">
-              {events.length === 0 ? "No events available" : "Select an event"}
-            </option>
-            {events.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.event_name}
-              </option>
-            ))}
-          </select>
+          <Field label="Event name" wide>
+            <input name="event_name" value={formData.event_name} onChange={handleChange} required />
+          </Field>
+          <Field label="Event type">
+            <input
+              name="event_type"
+              list="event-type-options"
+              value={formData.event_type}
+              onChange={handleChange}
+              required
+            />
+            <datalist id="event-type-options">
+              {EVENT_TYPE_SUGGESTIONS.map((type) => (
+                <option key={type} value={type} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Date">
+            <input name="event_date" type="date" value={formData.event_date} onChange={handleChange} required />
+          </Field>
+          <Field label="Venue">
+            <input name="venue" value={formData.venue} onChange={handleChange} required />
+          </Field>
+          <Field label="City">
+            <input name="city" value={formData.city} onChange={handleChange} required />
+          </Field>
         </div>
 
-        {!selectedEventId ? (
-          <p className="form-message">Select an event to view its lineup.</p>
-        ) : (
-          <>
-            <form className="form-grid" onSubmit={handleLineupSubmit}>
-              <select
-                name="artist_id"
-                value={lineupFormData.artist_id}
-                onChange={handleLineupChange}
-                required
-              >
-                <option value="">
-                  {artists.length === 0 ? "No artists available" : "Select an artist"}
+        <div className="form-section">Commercials</div>
+        <div className="form-grid">
+          <Field label="Ticket price (KES)">
+            <input name="ticket_price" type="number" min="0" step="any" value={formData.ticket_price} onChange={handleChange} required />
+          </Field>
+          <Field label="Marketing spend (KES)">
+            <input name="marketing_spend" type="number" min="0" step="any" value={formData.marketing_spend} onChange={handleChange} required />
+          </Field>
+          <Field label="Capacity">
+            <input name="capacity" type="number" min="1" value={formData.capacity} onChange={handleChange} required />
+          </Field>
+        </div>
+
+        <div className="form-section">
+          Actual results <span className="optional">optional — fill in after the event</span>
+        </div>
+        <div className="form-grid">
+          <Field label="Actual attendance">
+            <input name="actual_attendance" type="number" min="0" value={formData.actual_attendance} onChange={handleChange} />
+          </Field>
+          <Field label="Actual revenue (KES)">
+            <input name="revenue" type="number" min="0" step="any" value={formData.revenue} onChange={handleChange} />
+          </Field>
+        </div>
+
+        <Notice tone="error">{error}</Notice>
+
+        <div className="modal-actions">
+          <button type="button" className="ghost-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary-button" disabled={submitting}>
+            {submitting ? "Creating…" : "Create event"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function EventDrawer({ event, artists, onClose }) {
+  const lineupQuery = useApiData(`/events/${event.id}/lineup`);
+  const lineup = useMemo(
+    () =>
+      [...(lineupQuery.data ?? [])].sort(
+        (a, b) => (a.performance_order ?? 99) - (b.performance_order ?? 99),
+      ),
+    [lineupQuery.data],
+  );
+  const [formData, setFormData] = useState(initialLineupForm);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  const artistById = useMemo(() => {
+    const map = {};
+    artists.forEach((artist) => {
+      map[artist.id] = artist;
+    });
+    return map;
+  }, [artists]);
+
+  function handleChange(e) {
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setNotice(null);
+
+    const payload = {
+      event_id: event.id,
+      artist_id: Number(formData.artist_id),
+      role: formData.role || null,
+      performance_order: formData.performance_order ? Number(formData.performance_order) : null,
+      is_headliner: formData.is_headliner,
+      set_duration_minutes: formData.set_duration_minutes
+        ? Number(formData.set_duration_minutes)
+        : null,
+    };
+
+    try {
+      await apiPost("/event-artists", payload);
+      setNotice({ tone: "success", text: "Artist added to lineup." });
+      setFormData(initialLineupForm);
+      lineupQuery.reload();
+    } catch (err) {
+      setNotice({ tone: "error", text: err.message || "Failed to add artist to lineup" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const sellThrough =
+    event.actual_attendance != null && event.capacity > 0
+      ? event.actual_attendance / event.capacity
+      : null;
+
+  return (
+    <Modal title={event.event_name} description={`${event.event_type} · ${formatDate(event.event_date)}`} onClose={onClose} side>
+      <div className="detail-grid">
+        <div>
+          <span>Venue</span>
+          <strong>{event.venue}</strong>
+          <small>{event.city}</small>
+        </div>
+        <div>
+          <span>Ticket price</span>
+          <strong>{formatKes(event.ticket_price)}</strong>
+        </div>
+        <div>
+          <span>Marketing spend</span>
+          <strong>{formatKes(event.marketing_spend)}</strong>
+        </div>
+        <div>
+          <span>Capacity</span>
+          <strong>{formatNumber(event.capacity)}</strong>
+        </div>
+        <div>
+          <span>Actual attendance</span>
+          <strong>{formatNumber(event.actual_attendance)}</strong>
+          {sellThrough !== null && <small>{Math.round(sellThrough * 100)}% of capacity</small>}
+        </div>
+        <div>
+          <span>Actual revenue</span>
+          <strong>{formatKes(event.revenue)}</strong>
+        </div>
+      </div>
+
+      <div className="drawer-actions">
+        <Link to={`/predictions?event=${event.id}`} className="primary-button">
+          <Icon name="chart" size={16} /> Run prediction
+        </Link>
+        <Link to={`/recommendations?event=${event.id}`} className="ghost-button">
+          <Icon name="spark" size={16} /> Recommendations
+        </Link>
+      </div>
+
+      <h2 className="drawer-heading">Lineup</h2>
+      <p className="panel-subtext">
+        Linked artists strengthen artist-aware predictions. Events without a lineup
+        still receive a baseline forecast.
+      </p>
+
+      {lineupQuery.loading ? (
+        <p className="panel-subtext">Loading lineup…</p>
+      ) : lineupQuery.error ? (
+        <Notice tone="error">{lineupQuery.error.message}</Notice>
+      ) : lineup.length === 0 ? (
+        <EmptyState title="No artists linked yet">Add the first act below.</EmptyState>
+      ) : (
+        <ol className="lineup-list">
+          {lineup.map((entry) => {
+            const artist = artistById[entry.artist_id];
+            return (
+              <li key={entry.id}>
+                <span className="lineup-order">{entry.performance_order ?? "–"}</span>
+                <div className="event-thumb small" style={{ background: thumbGradient(entry.artist_id) }}>
+                  {(artist?.artist_name ?? "?").charAt(0).toUpperCase()}
+                </div>
+                <div className="lineup-main">
+                  <div className="event-title">
+                    {artist?.artist_name ?? `Artist #${entry.artist_id}`}
+                    {entry.is_headliner && <span className="pill pill-mid">Headliner</span>}
+                  </div>
+                  <div className="event-sub">
+                    {[entry.role, entry.set_duration_minutes && `${entry.set_duration_minutes} min`]
+                      .filter(Boolean)
+                      .join(" · ") || "No role set"}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <form className="lineup-form" onSubmit={handleSubmit}>
+        <div className="form-section">Add artist to lineup</div>
+        <div className="form-grid">
+          <Field label="Artist" wide>
+            <select name="artist_id" value={formData.artist_id} onChange={handleChange} required>
+              <option value="">{artists.length === 0 ? "No artists available" : "Select an artist"}</option>
+              {artists.map((artist) => (
+                <option key={artist.id} value={artist.id}>
+                  {artist.artist_name}
                 </option>
-                {artists.map((artist) => (
-                  <option key={artist.id} value={artist.id}>
-                    {artist.artist_name}
-                  </option>
-                ))}
-              </select>
-              <input
-                name="role"
-                placeholder="Role (e.g. Headliner, Support)"
-                value={lineupFormData.role}
-                onChange={handleLineupChange}
-              />
-              <input
-                name="performance_order"
-                placeholder="Performance Order"
-                value={lineupFormData.performance_order}
-                onChange={handleLineupChange}
-                type="number"
-              />
-              <input
-                name="set_duration_minutes"
-                placeholder="Set Duration (minutes)"
-                value={lineupFormData.set_duration_minutes}
-                onChange={handleLineupChange}
-                type="number"
-              />
-              <label>
-                <input
-                  name="is_headliner"
-                  type="checkbox"
-                  checked={lineupFormData.is_headliner}
-                  onChange={handleLineupChange}
-                />
-                Headliner
-              </label>
+              ))}
+            </select>
+          </Field>
+          <Field label="Role">
+            <input name="role" placeholder="e.g. Support" value={formData.role} onChange={handleChange} />
+          </Field>
+          <Field label="Performance order">
+            <input name="performance_order" type="number" min="1" value={formData.performance_order} onChange={handleChange} />
+          </Field>
+          <Field label="Set duration (min)">
+            <input name="set_duration_minutes" type="number" min="1" value={formData.set_duration_minutes} onChange={handleChange} />
+          </Field>
+          <label className="checkbox">
+            <input name="is_headliner" type="checkbox" checked={formData.is_headliner} onChange={handleChange} />
+            Headliner
+          </label>
+        </div>
+        <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
+          {notice?.text}
+        </Notice>
+        <div className="modal-actions">
+          <button type="submit" className="primary-button" disabled={submitting || artists.length === 0}>
+            {submitting ? "Adding…" : "Add to lineup"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
-              <button
-                type="submit"
-                className="primary-button"
-                disabled={lineupSubmitting || artists.length === 0}
-              >
-                {lineupSubmitting ? "Adding..." : "Add to Lineup"}
-              </button>
-            </form>
+function EventsPage() {
+  const eventsQuery = useApiData("/events");
+  const artistsQuery = useApiData("/artists");
+  const predictionsQuery = useApiData("/predictions");
 
-            {lineupMessage && <p className="form-message">{lineupMessage}</p>}
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+  const [notice, setNotice] = useState("");
 
-            {lineupLoading ? (
-              <p>Loading lineup...</p>
-            ) : lineup.length === 0 ? (
-              <p>No artists assigned to this event yet.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Order</th>
-                      <th>Artist</th>
-                      <th>Role</th>
-                      <th>Headliner</th>
-                      <th>Set Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lineup.map((entry) => (
-                      <tr key={entry.id}>
-                        <td>{entry.performance_order ?? "-"}</td>
-                        <td>{getArtistName(entry.artist_id)}</td>
-                        <td>{entry.role || "-"}</td>
-                        <td>{entry.is_headliner ? "Yes" : "No"}</td>
+  const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
+  const artists = artistsQuery.data ?? [];
+
+  const latestPrediction = useMemo(() => {
+    const map = {};
+    (predictionsQuery.data ?? []).forEach((prediction) => {
+      const existing = map[prediction.event_id];
+      if (!existing || prediction.created_at > existing.created_at) {
+        map[prediction.event_id] = prediction;
+      }
+    });
+    return map;
+  }, [predictionsQuery.data]);
+
+  const eventTypes = useMemo(
+    () => [...new Set(events.map((event) => event.event_type))].sort(),
+    [events],
+  );
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return events
+      .filter((event) => {
+        if (typeFilter && event.event_type !== typeFilter) return false;
+        if (statusFilter === "upcoming" && !isUpcoming(event.event_date)) return false;
+        if (statusFilter === "past" && isUpcoming(event.event_date)) return false;
+        if (!term) return true;
+        return [event.event_name, event.venue, event.city, event.event_type]
+          .join(" ")
+          .toLowerCase()
+          .includes(term);
+      })
+      .sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)));
+  }, [events, search, typeFilter, statusFilter]);
+
+  const stats = useMemo(() => {
+    const upcoming = events.filter((event) => isUpcoming(event.event_date)).length;
+    const capacity = events.reduce((sum, event) => sum + (event.capacity || 0), 0);
+    const recordedRevenue = events.reduce((sum, event) => sum + (event.revenue || 0), 0);
+    return { upcoming, capacity, recordedRevenue };
+  }, [events]);
+
+  const selectedEvent = events.find((event) => event.id === selectedId);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Events"
+        description="Create events, manage lineups and jump straight into forecasts."
+      >
+        <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
+          <Icon name="plus" size={16} strokeWidth={2.2} /> New event
+        </button>
+      </PageHeader>
+
+      <Notice tone="success" onDismiss={() => setNotice("")}>
+        {notice}
+      </Notice>
+
+      <section className="summary-grid">
+        <StatCard label="Total events" value={formatNumber(events.length)} accent="#F0A860" />
+        <StatCard label="Upcoming" value={formatNumber(stats.upcoming)} note="dated today or later" accent="#4FD1C5" />
+        <StatCard label="Combined capacity" value={formatNumber(stats.capacity)} accent="#9B8CF2" />
+        <StatCard label="Recorded revenue" value={formatKes(stats.recordedRevenue)} note="from completed events" accent="#5FD9B4" />
+      </section>
+
+      {eventsQuery.loading ? (
+        <LoadingPanel />
+      ) : eventsQuery.error ? (
+        <Notice tone="error">{eventsQuery.error.message}</Notice>
+      ) : (
+        <section className="panel">
+          <div className="toolbar">
+            <div className="search">
+              <Icon name="search" size={16} />
+              <input
+                type="search"
+                placeholder="Search by name, venue or city"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search events"
+              />
+            </div>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter by type">
+              <option value="">All types</option>
+              {eventTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+            <div className="segmented" role="group" aria-label="Filter by date">
+              {["all", "upcoming", "past"].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={statusFilter === value ? "active" : ""}
+                  onClick={() => setStatusFilter(value)}
+                >
+                  {value[0].toUpperCase() + value.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <EmptyState
+              title={events.length === 0 ? "No events yet" : "No events match your filters"}
+              action={
+                events.length === 0 && (
+                  <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
+                    Create your first event
+                  </button>
+                )
+              }
+            />
+          ) : (
+            <div className="table-wrap">
+              <table className="clickable-rows">
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>Venue</th>
+                    <th>Ticket</th>
+                    <th>Capacity</th>
+                    <th>Attendance</th>
+                    <th>Latest forecast</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((event) => {
+                    const prediction = latestPrediction[event.id];
+                    const upcoming = isUpcoming(event.event_date);
+                    return (
+                      <tr
+                        key={event.id}
+                        onClick={() => setSelectedId(event.id)}
+                        onKeyDown={(e) => e.key === "Enter" && setSelectedId(event.id)}
+                        tabIndex={0}
+                      >
                         <td>
-                          {entry.set_duration_minutes
-                            ? `${entry.set_duration_minutes} min`
-                            : "-"}
+                          <div className="event-cell">
+                            <div className="event-thumb" style={{ background: thumbGradient(event.id) }}>
+                              {event.event_name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="event-title">{event.event_name}</div>
+                              <div className="event-sub">{event.event_type}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          {formatDate(event.event_date)}
+                          <div>
+                            <span className={upcoming ? "pill pill-high" : "pill pill-low"}>
+                              {upcoming ? "Upcoming" : "Past"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          {event.venue}
+                          <div className="event-sub">{event.city}</div>
+                        </td>
+                        <td>{formatKes(event.ticket_price)}</td>
+                        <td>{formatNumber(event.capacity)}</td>
+                        <td className="cell-bar">
+                          {event.actual_attendance != null ? (
+                            <>
+                              {formatNumber(event.actual_attendance)}
+                              <ProgressBar value={event.actual_attendance} max={event.capacity} color="#4FD1C5" />
+                            </>
+                          ) : (
+                            <span className="event-sub">Not recorded</span>
+                          )}
+                        </td>
+                        <td>
+                          {prediction ? (
+                            formatNumber(prediction.predicted_attendance)
+                          ) : (
+                            <span className="event-sub">None yet</span>
+                          )}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="table-foot">Select an event to view details and manage its lineup.</p>
+        </section>
+      )}
+
+      {showCreate && (
+        <NewEventModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(created) => {
+            setShowCreate(false);
+            setNotice(`“${created.event_name}” was created.`);
+            eventsQuery.reload();
+          }}
+        />
+      )}
+
+      {selectedEvent && (
+        <EventDrawer event={selectedEvent} artists={artists} onClose={() => setSelectedId(null)} />
+      )}
+    </>
   );
 }
 
