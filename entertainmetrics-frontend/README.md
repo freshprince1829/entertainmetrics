@@ -1,16 +1,47 @@
-# React + Vite
+# EntertainMetrics Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite single-page app for the EntertainMetrics analytics platform.
 
-Currently, two official plugins are available:
+## Pages
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Route | Purpose |
+| --- | --- |
+| `/` | Dashboard: summary metrics, predicted vs. actual, confidence, recent activity |
+| `/events` | Event list with search/filters; click an event to view details and manage its lineup |
+| `/artists` | Artist roster with reach and prediction-score profiles |
+| `/predictions` | Run forecasts (stored values pre-filled, editable for what-if runs) and browse history |
+| `/recommendations` | Ticket price sweep and artist suggestions for an event |
 
-## React Compiler
+`/predictions?event=<id>` and `/recommendations?event=<id>` open with that event selected.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Local development
 
-## Expanding the ESLint configuration
+```bash
+npm install
+cp .env.example .env   # optional; defaults to http://127.0.0.1:8000
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Start the backend separately (`python3 -m uvicorn app.main:app --reload` in `entertainmetrics-backend/`).
+
+## Configuration
+
+| Variable | Description |
+| --- | --- |
+| `VITE_API_BASE_URL` | Base URL of the FastAPI backend. Read at build time. |
+
+## Production build and deployment
+
+```bash
+npm run build      # outputs static files to dist/
+npm run preview    # serve the build locally
+```
+
+`dist/` can be hosted on any static host. Set `VITE_API_BASE_URL` to the deployed backend URL in the host's build environment.
+
+Because the app uses client-side routing, the host must serve `index.html` for unknown paths. This is already configured for:
+
+- **Vercel** — `vercel.json`
+- **Netlify / Cloudflare Pages** — `public/_redirects`
+
+Set the project root to `entertainmetrics-frontend` on the host.
