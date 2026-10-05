@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EventCreate(BaseModel):
@@ -194,3 +194,37 @@ class PredictedVsActualResponse(BaseModel):
     mean_revenue_error_pct: float | None = None
     items: list[PredictedVsActualItem]
     awaiting_results: list[AwaitingResultsItem] = []
+
+
+class SalesSnapshotCreate(BaseModel):
+    recorded_at: datetime
+    tickets_sold_total: int = Field(ge=0)
+    gate_tickets_sold: int = Field(default=0, ge=0)
+    attendance_checked_in: int | None = Field(default=None, ge=0)
+    revenue_to_date: float | None = Field(default=None, ge=0)
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def check_consistency(self):
+        if self.gate_tickets_sold > self.tickets_sold_total:
+            raise ValueError("gate_tickets_sold cannot exceed tickets_sold_total")
+        if (
+            self.attendance_checked_in is not None
+            and self.attendance_checked_in > self.tickets_sold_total
+        ):
+            raise ValueError("attendance_checked_in cannot exceed tickets_sold_total")
+        return self
+
+
+class SalesSnapshotResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_id: int
+    recorded_at: datetime
+    tickets_sold_total: int
+    gate_tickets_sold: int
+    attendance_checked_in: int | None = None
+    revenue_to_date: float | None = None
+    notes: str | None = None
+    created_at: datetime | None = None

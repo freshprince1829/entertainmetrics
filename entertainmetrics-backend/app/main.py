@@ -1,12 +1,12 @@
 from datetime import date
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db
-from . import crud, models, schemas
+from . import crud, models, sales, schemas
 
 Base.metadata.create_all(bind=engine)
 
@@ -239,6 +239,65 @@ def update_event_actuals(
                 detail=f"Actual attendance cannot exceed event capacity ({event.capacity})",
             )
         return crud.update_event_actuals(db, event, actuals)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+def _get_event_or_404(db: Session, event_id: int) -> models.Event:
+    event = db.get(models.Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
+
+@app.post(
+    "/events/{event_id}/sales-snapshots",
+    response_model=schemas.SalesSnapshotResponse,
+    status_code=201,
+)
+def create_sales_snapshot(
+    event_id: int,
+    snapshot: schemas.SalesSnapshotCreate,
+    db: Session = Depends(get_db),
+):
+    try:
+        event = _get_event_or_404(db, event_id)
+        existing = crud.get_sales_snapshots(db, event_id)
+        error_message = sales.validate_new_snapshot(event, existing, snapshot)
+        if error_message:
+            raise HTTPException(status_code=400, detail=error_message)
+        return crud.create_sales_snapshot(db, event_id, snapshot)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/sales-snapshots",
+    response_model=list[schemas.SalesSnapshotResponse],
+)
+def list_sales_snapshots(event_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        return crud.get_sales_snapshots(db, event_id)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/events/{event_id}/sales-snapshots/{snapshot_id}", status_code=204)
+def delete_sales_snapshot(event_id: int, snapshot_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        snapshot = db.get(models.TicketSalesSnapshot, snapshot_id)
+        if snapshot is None or snapshot.event_id != event_id:
+            raise HTTPException(status_code=404, detail="Snapshot not found")
+        crud.delete_sales_snapshot(db, snapshot)
+        return Response(status_code=204)
     except HTTPException:
         raise
     except SQLAlchemyError as error:

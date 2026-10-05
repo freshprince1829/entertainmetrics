@@ -41,6 +41,11 @@ class Event(Base):
         back_populates="event",
         cascade="all, delete-orphan",
     )
+    sales_snapshots = relationship(
+        "TicketSalesSnapshot",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
 
 
 class Artist(Base):
@@ -102,3 +107,22 @@ class Prediction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     event = relationship("Event", back_populates="predictions")
+
+
+class TicketSalesSnapshot(Base):
+    """A timestamped, cumulative reading of ticket sales and attendance for an
+    event. Several snapshots can be logged per day (e.g. at the gate)."""
+
+    __tablename__ = "ticket_sales_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False, index=True)
+    recorded_at = Column(DateTime(timezone=True), nullable=False)
+    tickets_sold_total = Column(Integer, nullable=False)
+    gate_tickets_sold = Column(Integer, nullable=False, default=0)
+    attendance_checked_in = Column(Integer, nullable=True)
+    revenue_to_date = Column(Float, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    event = relationship("Event", back_populates="sales_snapshots")

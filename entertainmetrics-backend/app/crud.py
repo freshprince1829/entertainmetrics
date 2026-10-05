@@ -32,6 +32,33 @@ def update_event_actuals(
     return event
 
 
+def get_sales_snapshots(db: Session, event_id: int):
+    return (
+        db.query(models.TicketSalesSnapshot)
+        .filter(models.TicketSalesSnapshot.event_id == event_id)
+        .order_by(
+            models.TicketSalesSnapshot.recorded_at.asc(),
+            models.TicketSalesSnapshot.id.asc(),
+        )
+        .all()
+    )
+
+
+def create_sales_snapshot(
+    db: Session, event_id: int, snapshot: schemas.SalesSnapshotCreate
+):
+    db_snapshot = models.TicketSalesSnapshot(event_id=event_id, **snapshot.model_dump())
+    db.add(db_snapshot)
+    db.commit()
+    db.refresh(db_snapshot)
+    return db_snapshot
+
+
+def delete_sales_snapshot(db: Session, snapshot: models.TicketSalesSnapshot):
+    db.delete(snapshot)
+    db.commit()
+
+
 def create_artist(db: Session, artist: schemas.ArtistCreate):
     db_artist = models.Artist(**artist.model_dump())
     db.add(db_artist)
