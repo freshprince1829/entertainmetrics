@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -197,6 +199,13 @@ def health_check():
 
 @app.post("/events", response_model=schemas.EventResponse)
 def create_event(event: schemas.EventCreate, db: Session = Depends(get_db)):
+    if event.event_date > date.today() and (
+        event.actual_attendance is not None or event.revenue is not None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Actual results can only be recorded once the event date has passed",
+        )
     try:
         return crud.create_event(db, event)
     except SQLAlchemyError as error:
@@ -207,6 +216,31 @@ def create_event(event: schemas.EventCreate, db: Session = Depends(get_db)):
 def list_events(db: Session = Depends(get_db)):
     try:
         return crud.get_events(db)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.patch("/events/{event_id}/actuals", response_model=schemas.EventResponse)
+def update_event_actuals(
+    event_id: int, actuals: schemas.EventActualsUpdate, db: Session = Depends(get_db)
+):
+    try:
+        event = db.get(models.Event, event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        if event.event_date > date.today():
+            raise HTTPException(
+                status_code=400,
+                detail="Actual results can only be recorded once the event date has passed",
+            )
+        if actuals.actual_attendance > event.capacity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Actual attendance cannot exceed event capacity ({event.capacity})",
+            )
+        return crud.update_event_actuals(db, event, actuals)
+    except HTTPException:
+        raise
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 

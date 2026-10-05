@@ -40,6 +40,14 @@ export function apiPost(path, body) {
   });
 }
 
+export function apiPatch(path, body) {
+  return request(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 /**
  * Loads `path` with GET. Pass null to skip loading.
  * `reload()` refetches in the background while keeping the current data.

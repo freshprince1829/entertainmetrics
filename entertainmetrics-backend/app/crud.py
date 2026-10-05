@@ -22,6 +22,16 @@ def get_events(db: Session):
     )
 
 
+def update_event_actuals(
+    db: Session, event: models.Event, actuals: schemas.EventActualsUpdate
+):
+    event.actual_attendance = actuals.actual_attendance
+    event.revenue = actuals.revenue
+    db.commit()
+    db.refresh(event)
+    return event
+
+
 def create_artist(db: Session, artist: schemas.ArtistCreate):
     db_artist = models.Artist(**artist.model_dump())
     db.add(db_artist)
@@ -124,23 +134,39 @@ def _percent_error(predicted: float, actual: float | None) -> float | None:
     return round((predicted - actual) / actual * 100, 1)
 
 
+def _latest_prediction(db: Session, event_id: int):
+    return (
+        db.query(models.Prediction)
+        .filter(models.Prediction.event_id == event_id)
+        .order_by(models.Prediction.created_at.desc(), models.Prediction.id.desc())
+        .first()
+    )
+
+
 def get_predicted_vs_actual(db: Session):
-    """Compare each event's latest prediction with its recorded actuals."""
+    """Compare each event's latest prediction with its recorded actuals, and
+    list events that are still waiting for actual results."""
     events = (
         db.query(models.Event)
-        .filter(models.Event.actual_attendance.isnot(None))
         .order_by(models.Event.event_date.asc(), models.Event.id.asc())
         .all()
     )
 
     items = []
+    awaiting_results = []
     for event in events:
-        latest = (
-            db.query(models.Prediction)
-            .filter(models.Prediction.event_id == event.id)
-            .order_by(models.Prediction.created_at.desc(), models.Prediction.id.desc())
-            .first()
-        )
+        latest = _latest_prediction(db, event.id)
+        if event.actual_attendance is None:
+            awaiting_results.append(
+                {
+                    "event_id": event.id,
+                    "event_name": event.event_name,
+                    "event_date": event.event_date,
+                    "predicted_attendance": latest.predicted_attendance if latest else None,
+                    "predicted_revenue": latest.predicted_revenue if latest else None,
+                }
+            )
+            continue
         if latest is None:
             continue
         items.append(
@@ -170,4 +196,5 @@ def get_predicted_vs_actual(db: Session):
         "mean_attendance_error_pct": mean_abs("attendance_error_pct"),
         "mean_revenue_error_pct": mean_abs("revenue_error_pct"),
         "items": items,
+        "awaiting_results": awaiting_results,
     }

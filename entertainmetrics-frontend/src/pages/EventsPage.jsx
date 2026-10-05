@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiPost, useApiData } from "../api";
+import { apiPatch, apiPost, useApiData } from "../api";
 import {
   EmptyState,
   Field,
@@ -13,6 +13,7 @@ import {
   StatCard,
 } from "../components/ui";
 import {
+  canRecordActuals,
   formatDate,
   formatKes,
   formatNumber,
@@ -58,6 +59,7 @@ function NewEventModal({ onClose, onCreated }) {
     setSubmitting(true);
     setError("");
 
+    const includeActuals = canRecordActuals(formData.event_date);
     const payload = {
       event_name: formData.event_name,
       event_type: formData.event_type,
@@ -67,10 +69,11 @@ function NewEventModal({ onClose, onCreated }) {
       ticket_price: Number(formData.ticket_price),
       marketing_spend: Number(formData.marketing_spend),
       capacity: Number(formData.capacity),
-      actual_attendance: formData.actual_attendance
-        ? Number(formData.actual_attendance)
-        : null,
-      revenue: formData.revenue ? Number(formData.revenue) : null,
+      actual_attendance:
+        includeActuals && formData.actual_attendance
+          ? Number(formData.actual_attendance)
+          : null,
+      revenue: includeActuals && formData.revenue ? Number(formData.revenue) : null,
     };
 
     try {
@@ -132,17 +135,21 @@ function NewEventModal({ onClose, onCreated }) {
           </Field>
         </div>
 
-        <div className="form-section">
-          Actual results <span className="optional">optional — fill in after the event</span>
-        </div>
-        <div className="form-grid">
-          <Field label="Actual attendance">
-            <input name="actual_attendance" type="number" min="0" value={formData.actual_attendance} onChange={handleChange} />
-          </Field>
-          <Field label="Actual revenue (KES)">
-            <input name="revenue" type="number" min="0" step="any" value={formData.revenue} onChange={handleChange} />
-          </Field>
-        </div>
+        {canRecordActuals(formData.event_date) && (
+          <>
+            <div className="form-section">
+              Actual results <span className="optional">optional — for events that have already happened</span>
+            </div>
+            <div className="form-grid">
+              <Field label="Actual attendance">
+                <input name="actual_attendance" type="number" min="0" value={formData.actual_attendance} onChange={handleChange} />
+              </Field>
+              <Field label="Actual revenue (KES)">
+                <input name="revenue" type="number" min="0" step="any" value={formData.revenue} onChange={handleChange} />
+              </Field>
+            </div>
+          </>
+        )}
 
         <Notice tone="error">{error}</Notice>
 
@@ -159,7 +166,86 @@ function NewEventModal({ onClose, onCreated }) {
   );
 }
 
-function EventDrawer({ event, artists, onClose }) {
+function ActualsForm({ event, onSaved }) {
+  const [formData, setFormData] = useState({
+    actual_attendance: event.actual_attendance ?? "",
+    revenue: event.revenue ?? "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  function handleChange(e) {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setNotice(null);
+
+    const payload = {
+      actual_attendance: Number(formData.actual_attendance),
+      revenue: formData.revenue === "" ? null : Number(formData.revenue),
+    };
+
+    try {
+      await apiPatch(`/events/${event.id}/actuals`, payload);
+      setNotice({ tone: "success", text: "Actual results saved." });
+      onSaved();
+    } catch (err) {
+      setNotice({ tone: "error", text: err.message || "Failed to save actual results" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const fullPriceRevenue =
+    formData.actual_attendance === ""
+      ? null
+      : Number(formData.actual_attendance) * event.ticket_price;
+
+  return (
+    <form className="lineup-form" onSubmit={handleSubmit}>
+      <div className="form-section">
+        {event.actual_attendance != null ? "Update actual results" : "Record actual results"}
+      </div>
+      <div className="form-grid">
+        <Field label="Actual attendance">
+          <input
+            name="actual_attendance"
+            type="number"
+            min="0"
+            max={event.capacity}
+            value={formData.actual_attendance}
+            onChange={handleChange}
+            required
+          />
+        </Field>
+        <Field
+          label="Actual revenue (KES)"
+          hint={
+            fullPriceRevenue !== null
+              ? `At full ticket price: ${formatKes(fullPriceRevenue)}. Leave blank if unknown.`
+              : "Leave blank if unknown."
+          }
+        >
+          <input name="revenue" type="number" min="0" step="any" value={formData.revenue} onChange={handleChange} />
+        </Field>
+      </div>
+      <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
+        {notice?.text}
+      </Notice>
+      <div className="modal-actions">
+        <button type="submit" className="primary-button" disabled={submitting}>
+          {submitting ? "Saving…" : "Save results"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EventDrawer({ event, artists, onClose, onEventUpdated }) {
   const lineupQuery = useApiData(`/events/${event.id}/lineup`);
   const lineup = useMemo(
     () =>
@@ -248,6 +334,14 @@ function EventDrawer({ event, artists, onClose }) {
           <strong>{formatKes(event.revenue)}</strong>
         </div>
       </div>
+
+      {canRecordActuals(event.event_date) ? (
+        <ActualsForm event={event} onSaved={onEventUpdated} />
+      ) : (
+        <p className="panel-subtext">
+          Actual results can be recorded once the event date ({formatDate(event.event_date)}) arrives.
+        </p>
+      )}
 
       <div className="drawer-actions">
         <Link to={`/predictions?event=${event.id}`} className="primary-button">
@@ -529,6 +623,8 @@ function EventsPage() {
                         <td>
                           {prediction ? (
                             formatNumber(prediction.predicted_attendance)
+                          ) : predictionsQuery.loading ? (
+                            <span className="event-sub">Loading…</span>
                           ) : (
                             <span className="event-sub">None yet</span>
                           )}
@@ -556,7 +652,12 @@ function EventsPage() {
       )}
 
       {selectedEvent && (
-        <EventDrawer event={selectedEvent} artists={artists} onClose={() => setSelectedId(null)} />
+        <EventDrawer
+          event={selectedEvent}
+          artists={artists}
+          onClose={() => setSelectedId(null)}
+          onEventUpdated={() => eventsQuery.reload()}
+        />
       )}
     </>
   );

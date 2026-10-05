@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventCreate(BaseModel):
@@ -14,6 +14,11 @@ class EventCreate(BaseModel):
     capacity: int
     actual_attendance: int | None = None
     revenue: float | None = None
+
+
+class EventActualsUpdate(BaseModel):
+    actual_attendance: int = Field(ge=0)
+    revenue: float | None = Field(default=None, ge=0)
 
 
 class EventArtistResponse(BaseModel):
@@ -175,8 +180,17 @@ class PredictedVsActualItem(BaseModel):
     revenue_error_pct: float | None = None
 
 
+class AwaitingResultsItem(BaseModel):
+    event_id: int
+    event_name: str
+    event_date: date
+    predicted_attendance: int | None = None
+    predicted_revenue: float | None = None
+
+
 class PredictedVsActualResponse(BaseModel):
     events_compared: int
     mean_attendance_error_pct: float | None = None
     mean_revenue_error_pct: float | None = None
     items: list[PredictedVsActualItem]
+    awaiting_results: list[AwaitingResultsItem] = []

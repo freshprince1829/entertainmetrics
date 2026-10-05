@@ -39,14 +39,22 @@ export function formatDateTime(value) {
   });
 }
 
-export function isUpcoming(eventDate) {
+function todayIso() {
   const now = new Date();
-  const today = [
+  return [
     now.getFullYear(),
     String(now.getMonth() + 1).padStart(2, "0"),
     String(now.getDate()).padStart(2, "0"),
   ].join("-");
-  return String(eventDate) >= today;
+}
+
+export function isUpcoming(eventDate) {
+  return String(eventDate) >= todayIso();
+}
+
+// Actual results can be recorded from the event day onwards (matches the API).
+export function canRecordActuals(eventDate) {
+  return Boolean(eventDate) && String(eventDate) <= todayIso();
 }
 
 export function confidencePillClass(score) {

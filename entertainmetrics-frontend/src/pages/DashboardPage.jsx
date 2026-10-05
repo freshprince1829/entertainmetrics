@@ -13,8 +13,10 @@ import {
 import { useApiData } from "../api";
 import { LoadingPanel, Notice } from "../components/ui";
 import {
+  canRecordActuals,
   confidencePillClass,
   formatCompact,
+  formatDate,
   formatKes,
   THUMB_GRADIENTS,
 } from "../format";
@@ -58,6 +60,7 @@ function DashboardPage() {
     comparisonQuery.error;
 
   const comparisonItems = useMemo(() => comparison?.items ?? [], [comparison]);
+  const awaitingItems = comparison?.awaiting_results ?? [];
 
   const averageConfidence = useMemo(() => {
     if (recentPredictions.length === 0) return null;
@@ -385,6 +388,57 @@ function DashboardPage() {
                     <td>{item.actual_attendance}</td>
                     <td>{formatError(item.attendance_error_pct)}</td>
                     <td>{formatError(item.revenue_error_pct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {awaitingItems.length > 0 && (
+        <section className="panel" style={{ marginBottom: 28 }}>
+          <div className="panel-head">
+            <div>
+              <h2>Awaiting results</h2>
+              <p className="panel-subtext">
+                Events without recorded actuals. They join the accuracy comparison
+                once results are recorded on the Events page.
+              </p>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Date</th>
+                  <th>Latest forecast attendance</th>
+                  <th>Latest forecast revenue</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {awaitingItems.map((item) => (
+                  <tr key={item.event_id}>
+                    <td>{item.event_name}</td>
+                    <td>{formatDate(item.event_date)}</td>
+                    <td>
+                      {item.predicted_attendance != null
+                        ? item.predicted_attendance.toLocaleString("en-KE")
+                        : "No forecast yet"}
+                    </td>
+                    <td>{formatKes(item.predicted_revenue)}</td>
+                    <td>
+                      {canRecordActuals(item.event_date) ? (
+                        <Link to="/events" className="pill pill-low">
+                          Results not recorded
+                        </Link>
+                      ) : (
+                        <span className="pill pill-high">Awaiting results</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
