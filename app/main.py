@@ -19,23 +19,6 @@ app.add_middleware(
 )
 
 
-def _calculate_artist_strength_total(event: models.Event) -> float:
-    total = 0.0
-
-    for lineup_entry in event.lineup:
-        artist = lineup_entry.artist
-        if artist is None:
-            continue
-
-        total += (
-            float(artist.engagement_score or 0)
-            + float(artist.headline_score or 0)
-            + float(artist.market_strength_score or 0)
-        )
-
-    return total
-
-
 def _get_linked_artists(event: models.Event) -> list[models.Artist]:
     return [
         lineup_entry.artist
@@ -94,6 +77,67 @@ def _calculate_confidence_score(
 
     # Clamp between 0.3 and 0.95
     return max(0.3, min(score, 0.95))
+
+
+def _run_prediction_math(
+    ticket_price: float,
+    marketing_spend: float,
+    capacity: int,
+    linked_artists: list["models.Artist"],
+) -> dict:
+    """Shared rule-based prediction math used by /predict and the
+    recommendation endpoints, so all three stay numerically consistent."""
+
+    linked_artist_count = len(linked_artists)
+
+    artist_strength_total = 0.0
+    for artist in linked_artists:
+        artist_strength_total += (
+            float(artist.engagement_score or 0)
+            + float(artist.headline_score or 0)
+            + float(artist.market_strength_score or 0)
+        )
+
+    completeness_ratio = _calculate_artist_metric_completeness(linked_artists)
+    confidence_score = _calculate_confidence_score(
+        ticket_price=ticket_price,
+        marketing_spend=marketing_spend,
+        capacity=capacity,
+        linked_artist_count=linked_artist_count,
+        completeness_ratio=completeness_ratio,
+    )
+
+    attendance_estimate = (
+        (capacity * 0.4)
+        + (marketing_spend / 50)
+        - (ticket_price / 20)
+    )
+    if linked_artist_count > 0:
+        attendance_estimate += artist_strength_total * 10
+
+    predicted_attendance = int(min(capacity, attendance_estimate))
+    predicted_attendance = max(predicted_attendance, 0)
+    predicted_revenue = round(predicted_attendance * ticket_price, 2)
+
+    return {
+        "predicted_attendance": predicted_attendance,
+        "predicted_revenue": predicted_revenue,
+        "confidence_score": confidence_score,
+        "artist_strength_total": artist_strength_total,
+        "completeness_ratio": completeness_ratio,
+        "linked_artist_count": linked_artist_count,
+    }
+
+
+def _load_event_with_lineup(db: Session, event_id: int):
+    return (
+        db.query(models.Event)
+        .options(
+            selectinload(models.Event.lineup).selectinload(models.EventArtist.artist)
+        )
+        .filter(models.Event.id == event_id)
+        .first()
+    )
 
 
 def _constraint_name(error: IntegrityError) -> str | None:
@@ -209,67 +253,37 @@ def get_event_lineup(event_id: int, db: Session = Depends(get_db)):
 @app.post("/predict", response_model=schemas.PredictionResponse)
 def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)):
     try:
-        event = (
-            db.query(models.Event)
-            .options(
-                selectinload(models.Event.lineup).selectinload(models.EventArtist.artist)
-            )
-            .filter(models.Event.id == data.event_id)
-            .first()
-        )
+        event = _load_event_with_lineup(db, data.event_id)
         if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
 
         linked_artists = _get_linked_artists(event)
-        linked_artist_count = len(linked_artists)
-        artist_strength_total = (
-            _calculate_artist_strength_total(event) if linked_artist_count > 0 else 0.0
-        )
-        completeness_ratio = _calculate_artist_metric_completeness(linked_artists)
-        confidence_score = _calculate_confidence_score(
+        result = _run_prediction_math(
             ticket_price=data.ticket_price,
             marketing_spend=data.marketing_spend,
             capacity=data.capacity,
-            linked_artist_count=linked_artist_count,
-            completeness_ratio=completeness_ratio,
+            linked_artists=linked_artists,
         )
 
-        attendance_estimate = (
-            (data.capacity * 0.4)
-            + (data.marketing_spend / 50)
-            - (data.ticket_price / 20)
-        )
-        if linked_artist_count > 0:
-            attendance_estimate += artist_strength_total * 10
-
-        predicted_attendance = int(
-            min(
-                data.capacity,
-                attendance_estimate,
-            )
-        )
-        predicted_attendance = max(predicted_attendance, 0)
-
-        predicted_revenue = round(predicted_attendance * data.ticket_price, 2)
         model_version = "v1-rule-based"
-        if linked_artist_count > 0:
+        if result["linked_artist_count"] > 0:
             insight_summary = (
-                f"Rule-based estimate using {linked_artist_count} linked artists with "
-                f"an artist strength total of {artist_strength_total:.2f}. Dynamic "
-                f"confidence score is {confidence_score:.2f}."
+                f"Rule-based estimate using {result['linked_artist_count']} linked artists "
+                f"with an artist strength total of {result['artist_strength_total']:.2f}. "
+                f"Dynamic confidence score is {result['confidence_score']:.2f}."
             )
         else:
             insight_summary = (
                 "Lineup data was not linked, so artist influence was excluded from the "
-                f"prediction. Dynamic confidence score is {confidence_score:.2f}, and "
-                "confidence is lower because lineup data is missing."
+                f"prediction. Dynamic confidence score is {result['confidence_score']:.2f}, "
+                "and confidence is lower because lineup data is missing."
             )
 
         prediction_record = {
             "event_id": data.event_id,
-            "predicted_attendance": predicted_attendance,
-            "predicted_revenue": predicted_revenue,
-            "confidence_score": confidence_score,
+            "predicted_attendance": result["predicted_attendance"],
+            "predicted_revenue": result["predicted_revenue"],
+            "confidence_score": result["confidence_score"],
             "model_version": model_version,
             "insight_summary": insight_summary,
         }
@@ -320,3 +334,180 @@ def get_recent_predictions(limit: int = 5, db: Session = Depends(get_db)):
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
+
+
+@app.get(
+    "/dashboard/predicted-vs-actual",
+    response_model=schemas.PredictedVsActualResponse,
+)
+def get_predicted_vs_actual(db: Session = Depends(get_db)):
+    try:
+        return crud.get_predicted_vs_actual(db)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/recommend/artists",
+    response_model=list[schemas.ArtistRecommendationResponse],
+)
+def recommend_artists(event_id: int, limit: int = 5, db: Session = Depends(get_db)):
+    try:
+        event = _load_event_with_lineup(db, event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        linked_artists = _get_linked_artists(event)
+        linked_artist_ids = {artist.id for artist in linked_artists}
+
+        candidate_artists = [
+            artist for artist in crud.get_artists(db) if artist.id not in linked_artist_ids
+        ]
+
+        baseline = _run_prediction_math(
+            ticket_price=event.ticket_price,
+            marketing_spend=event.marketing_spend,
+            capacity=event.capacity,
+            linked_artists=linked_artists,
+        )
+
+        recommendations = []
+        for artist in candidate_artists:
+            projected = _run_prediction_math(
+                ticket_price=event.ticket_price,
+                marketing_spend=event.marketing_spend,
+                capacity=event.capacity,
+                linked_artists=linked_artists + [artist],
+            )
+
+            attendance_uplift = (
+                projected["predicted_attendance"] - baseline["predicted_attendance"]
+            )
+            revenue_uplift = round(
+                projected["predicted_revenue"] - baseline["predicted_revenue"], 2
+            )
+            recommendation_score = round(
+                float(artist.engagement_score or 0)
+                + float(artist.headline_score or 0)
+                + float(artist.market_strength_score or 0),
+                2,
+            )
+
+            if attendance_uplift > 0:
+                reason = (
+                    f"Adding {artist.artist_name} is projected to raise attendance by "
+                    f"{attendance_uplift} and revenue by KES {revenue_uplift:,.2f}, driven "
+                    f"by a combined engagement/headline/market-strength score of "
+                    f"{recommendation_score:.2f}."
+                )
+            else:
+                reason = (
+                    f"{artist.artist_name} has a combined engagement/headline/market-strength "
+                    f"score of {recommendation_score:.2f}, but the event is already near "
+                    "capacity, so the projected attendance uplift is limited."
+                )
+
+            recommendations.append(
+                schemas.ArtistRecommendationResponse(
+                    artist_id=artist.id,
+                    artist_name=artist.artist_name,
+                    genre=artist.genre,
+                    recommendation_score=recommendation_score,
+                    projected_attendance_uplift=attendance_uplift,
+                    projected_revenue_uplift=revenue_uplift,
+                    reason=reason,
+                )
+            )
+
+        recommendations.sort(key=lambda item: item.projected_revenue_uplift, reverse=True)
+
+        return recommendations[:limit]
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/recommend/pricing",
+    response_model=schemas.PricingRecommendationResponse,
+)
+def recommend_pricing(
+    event_id: int,
+    price_min: float | None = None,
+    price_max: float | None = None,
+    steps: int = 15,
+    db: Session = Depends(get_db),
+):
+    try:
+        event = _load_event_with_lineup(db, event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        if steps < 2 or steps > 100:
+            raise HTTPException(status_code=400, detail="steps must be between 2 and 100")
+        if (price_min is not None and price_min <= 0) or (
+            price_max is not None and price_max <= 0
+        ):
+            raise HTTPException(
+                status_code=400, detail="price_min and price_max must be greater than 0"
+            )
+
+        linked_artists = _get_linked_artists(event)
+
+        base_price = event.ticket_price
+        low = price_min if price_min is not None else max(base_price * 0.5, 50)
+        high = price_max if price_max is not None else base_price * 1.5
+        if high <= low:
+            high = low + 100
+
+        step_size = (high - low) / (steps - 1)
+        candidates = []
+        best = None
+
+        for i in range(steps):
+            candidate_price = round(low + step_size * i, 2)
+            result = _run_prediction_math(
+                ticket_price=candidate_price,
+                marketing_spend=event.marketing_spend,
+                capacity=event.capacity,
+                linked_artists=linked_artists,
+            )
+            candidate = schemas.PricingCandidate(
+                ticket_price=candidate_price,
+                predicted_attendance=result["predicted_attendance"],
+                predicted_revenue=result["predicted_revenue"],
+            )
+            candidates.append(candidate)
+
+            if best is None or candidate.predicted_revenue > best["candidate"].predicted_revenue:
+                best = {"candidate": candidate, "result": result}
+
+        insight_summary = (
+            f"Swept {steps} candidate ticket prices between KES {low:,.2f} and "
+            f"KES {high:,.2f}, holding marketing spend (KES {event.marketing_spend:,.2f}) "
+            f"and capacity ({event.capacity}) fixed. KES {best['candidate'].ticket_price:,.2f} "
+            "maximized projected revenue among the candidates tested. This is a rule-based "
+            "estimate, not a guaranteed outcome, and assumes demand responds to price the "
+            "same way the core prediction model does within the tested range."
+        )
+        if best["candidate"].predicted_attendance >= event.capacity:
+            insight_summary += (
+                " Note: projected attendance reaches capacity at this price, so the "
+                "model cannot capture further demand loss from higher prices; the "
+                "recommendation is effectively the highest price tested."
+            )
+
+        return schemas.PricingRecommendationResponse(
+            event_id=event_id,
+            recommended_ticket_price=best["candidate"].ticket_price,
+            predicted_attendance=best["candidate"].predicted_attendance,
+            predicted_revenue=best["candidate"].predicted_revenue,
+            confidence_score=best["result"]["confidence_score"],
+            candidates=candidates,
+            insight_summary=insight_summary,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)

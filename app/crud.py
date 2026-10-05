@@ -115,3 +115,59 @@ def get_recent_predictions(db: Session, limit: int = 5):
         .limit(limit)
         .all()
     )
+
+
+def _percent_error(predicted: float, actual: float | None) -> float | None:
+    """Signed % error of the prediction relative to the actual value."""
+    if actual is None or actual == 0:
+        return None
+    return round((predicted - actual) / actual * 100, 1)
+
+
+def get_predicted_vs_actual(db: Session):
+    """Compare each event's latest prediction with its recorded actuals."""
+    events = (
+        db.query(models.Event)
+        .filter(models.Event.actual_attendance.isnot(None))
+        .order_by(models.Event.event_date.asc(), models.Event.id.asc())
+        .all()
+    )
+
+    items = []
+    for event in events:
+        latest = (
+            db.query(models.Prediction)
+            .filter(models.Prediction.event_id == event.id)
+            .order_by(models.Prediction.created_at.desc(), models.Prediction.id.desc())
+            .first()
+        )
+        if latest is None:
+            continue
+        items.append(
+            {
+                "event_id": event.id,
+                "event_name": event.event_name,
+                "event_date": event.event_date,
+                "predicted_attendance": latest.predicted_attendance,
+                "actual_attendance": event.actual_attendance,
+                "attendance_error_pct": _percent_error(
+                    latest.predicted_attendance, event.actual_attendance
+                ),
+                "predicted_revenue": latest.predicted_revenue,
+                "actual_revenue": event.revenue,
+                "revenue_error_pct": _percent_error(
+                    latest.predicted_revenue, event.revenue
+                ),
+            }
+        )
+
+    def mean_abs(key: str) -> float | None:
+        values = [abs(i[key]) for i in items if i[key] is not None]
+        return round(sum(values) / len(values), 1) if values else None
+
+    return {
+        "events_compared": len(items),
+        "mean_attendance_error_pct": mean_abs("attendance_error_pct"),
+        "mean_revenue_error_pct": mean_abs("revenue_error_pct"),
+        "items": items,
+    }
