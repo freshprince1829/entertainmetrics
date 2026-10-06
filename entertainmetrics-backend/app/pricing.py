@@ -36,7 +36,7 @@ def base_price(event: models.Event, tiers: list[models.TicketTier]) -> tuple[flo
     ]
     if candidates:
         tier = min(candidates, key=lambda t: t.price)
-        return tier.price, f"lowest standard/advance tier ({tier.name})"
+        return tier.price, f"lowest standard/advance tier: {tier.name}"
     return event.ticket_price, "event ticket price (no standard or advance tier)"
 
 
