@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -48,6 +49,10 @@ class EventResponse(BaseModel):
     actual_attendance: int | None = None
     revenue: float | None = None
     created_at: datetime
+    # Optional, computed from ticket tiers (null / 0 when none are defined).
+    tier_count: int = 0
+    price_low: float | None = None
+    price_high: float | None = None
 
 class ArtistCreate(BaseModel):
     artist_name: str
@@ -134,6 +139,10 @@ class RecentEventResponse(BaseModel):
     actual_attendance: int | None = None
     revenue: float | None = None
     created_at: datetime
+    # Optional, computed from ticket tiers (null / 0 when none are defined).
+    tier_count: int = 0
+    price_low: float | None = None
+    price_high: float | None = None
 
 
 class RecentPredictionResponse(BaseModel):
@@ -300,3 +309,67 @@ class EventDayPatternsResponse(BaseModel):
 
 class FinalizeActualsResponse(FinalizePreview):
     event_id: int
+
+
+SalePhase = Literal["early_bird", "advance", "standard", "last_minute", "gate"]
+
+
+class TicketTierCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    price: float = Field(ge=0)
+    quantity_available: int | None = Field(default=None, ge=0)
+    sale_phase: SalePhase = "standard"
+    is_premium: bool = False
+    sort_order: int = 0
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("name cannot be blank")
+        return value
+
+
+class TicketTierUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    price: float | None = Field(default=None, ge=0)
+    quantity_available: int | None = Field(default=None, ge=0)
+    sale_phase: SalePhase | None = None
+    is_premium: bool | None = None
+    sort_order: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("name cannot be blank")
+        return value
+
+
+class TicketTierResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_id: int
+    name: str
+    price: float
+    quantity_available: int | None = None
+    sale_phase: str
+    is_premium: bool
+    sort_order: int
+    created_at: datetime | None = None
+
+
+class PriceRangeResponse(BaseModel):
+    event_id: int
+    tier_count: int
+    price_low: float | None = None
+    price_high: float | None = None
+    average_price_by_quantity: float | None = None
+    weighting: str | None = None
+    base_price: float
+    base_price_source: str

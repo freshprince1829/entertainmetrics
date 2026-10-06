@@ -18,6 +18,7 @@ def create_event(db: Session, event: schemas.EventCreate):
 def get_events(db: Session):
     return (
         db.query(models.Event)
+        .options(selectinload(models.Event.tiers))
         .order_by(models.Event.event_date.desc(), models.Event.id.desc())
         .all()
     )
@@ -61,6 +62,53 @@ def create_sales_snapshot(
 def delete_sales_snapshot(db: Session, snapshot: models.TicketSalesSnapshot):
     db.delete(snapshot)
     db.commit()
+
+
+def get_event_tiers(db: Session, event_id: int):
+    return (
+        db.query(models.TicketTier)
+        .filter(models.TicketTier.event_id == event_id)
+        .order_by(
+            models.TicketTier.sort_order.asc(),
+            models.TicketTier.price.asc(),
+            models.TicketTier.id.asc(),
+        )
+        .all()
+    )
+
+
+def create_tier(db: Session, event_id: int, tier: schemas.TicketTierCreate):
+    db_tier = models.TicketTier(event_id=event_id, **tier.model_dump())
+    db.add(db_tier)
+    db.commit()
+    db.refresh(db_tier)
+    return db_tier
+
+
+def update_tier(db: Session, tier: models.TicketTier, changes: dict):
+    for field, value in changes.items():
+        setattr(tier, field, value)
+    db.commit()
+    db.refresh(tier)
+    return tier
+
+
+def delete_tier(db: Session, tier: models.TicketTier):
+    db.delete(tier)
+    db.commit()
+
+
+def tier_sales_summary(db: Session, tier_id: int) -> tuple[int, int]:
+    """(number of snapshots recording this tier, highest tickets_sold recorded)."""
+    row = (
+        db.query(
+            func.count(models.SnapshotTierSales.id),
+            func.coalesce(func.max(models.SnapshotTierSales.tickets_sold), 0),
+        )
+        .filter(models.SnapshotTierSales.tier_id == tier_id)
+        .one()
+    )
+    return row[0], row[1]
 
 
 def get_events_with_snapshots(db: Session):
@@ -181,6 +229,7 @@ def get_dashboard_summary(db: Session):
 def get_recent_events(db: Session, limit: int = 5):
     return (
         db.query(models.Event)
+        .options(selectinload(models.Event.tiers))
         .order_by(models.Event.created_at.desc(), models.Event.id.desc())
         .limit(limit)
         .all()

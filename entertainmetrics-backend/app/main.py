@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db
-from . import crud, models, sales, schemas
+from . import crud, models, pricing, sales, schemas
 
 Base.metadata.create_all(bind=engine)
 
@@ -374,6 +374,130 @@ def finalize_actuals(event_id: int, db: Session = Depends(get_db)):
             db, event, preview["actual_attendance"], preview["revenue"]
         )
         return {"event_id": event.id, **preview}
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+def _get_tier_or_404(db: Session, event_id: int, tier_id: int) -> models.TicketTier:
+    tier = db.get(models.TicketTier, tier_id)
+    if tier is None or tier.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Ticket tier not found")
+    return tier
+
+
+def _handle_tier_integrity_error(db: Session, error: IntegrityError) -> None:
+    error_message = str(getattr(error, "orig", error)).lower()
+    if _constraint_name(error) == "uq_ticket_tier_event_name" or "unique" in error_message:
+        _rollback_and_raise(
+            db, 409, "A ticket tier with this name already exists for this event", error
+        )
+    _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.post(
+    "/events/{event_id}/tiers",
+    response_model=schemas.TicketTierResponse,
+    status_code=201,
+)
+def create_ticket_tier(
+    event_id: int, tier: schemas.TicketTierCreate, db: Session = Depends(get_db)
+):
+    try:
+        _get_event_or_404(db, event_id)
+        return crud.create_tier(db, event_id, tier)
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/events/{event_id}/tiers", response_model=list[schemas.TicketTierResponse])
+def list_ticket_tiers(event_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        return crud.get_event_tiers(db, event_id)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.patch(
+    "/events/{event_id}/tiers/{tier_id}",
+    response_model=schemas.TicketTierResponse,
+)
+def update_ticket_tier(
+    event_id: int,
+    tier_id: int,
+    changes: schemas.TicketTierUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        _get_event_or_404(db, event_id)
+        tier = _get_tier_or_404(db, event_id, tier_id)
+        updates = changes.model_dump(exclude_unset=True)
+        # name, price, sale_phase, is_premium and sort_order cannot be null.
+        for field in ("name", "price", "sale_phase", "is_premium", "sort_order"):
+            if field in updates and updates[field] is None:
+                raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+        new_quantity = updates.get("quantity_available")
+        if new_quantity is not None:
+            _, max_sold = crud.tier_sales_summary(db, tier_id)
+            if new_quantity < max_sold:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"quantity_available ({new_quantity}) is below the {max_sold} "
+                        "tickets already recorded as sold for this tier"
+                    ),
+                )
+        return crud.update_tier(db, tier, updates)
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/events/{event_id}/tiers/{tier_id}", status_code=204)
+def delete_ticket_tier(event_id: int, tier_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        tier = _get_tier_or_404(db, event_id, tier_id)
+        snapshot_count, _ = crud.tier_sales_summary(db, tier_id)
+        if snapshot_count:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"This tier has recorded sales in {snapshot_count} snapshot(s) and "
+                    "cannot be deleted; delete those snapshots first"
+                ),
+            )
+        crud.delete_tier(db, tier)
+        return Response(status_code=204)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/events/{event_id}/price-range", response_model=schemas.PriceRangeResponse)
+def get_price_range(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        base, source = pricing.base_price(event, tiers)
+        return {
+            "event_id": event_id,
+            **pricing.price_range(tiers),
+            "base_price": base,
+            "base_price_source": source,
+        }
     except HTTPException:
         raise
     except SQLAlchemyError as error:
