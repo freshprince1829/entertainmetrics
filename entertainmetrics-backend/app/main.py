@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
-from .database import Base, engine, get_db
+from .database import Base, engine, ensure_added_columns, get_db
 from . import crud, models, pricing, ranges, sales, schemas
 
 Base.metadata.create_all(bind=engine)
+ensure_added_columns(engine)
 
 app = FastAPI(title="EntertainMetrics API")
 
@@ -414,6 +415,12 @@ def _get_tier_or_404(db: Session, event_id: int, tier_id: int) -> models.TicketT
     return tier
 
 
+def _with_tier_warnings(db: Session, tier: models.TicketTier) -> models.TicketTier:
+    """Attach non-blocking duplicate-tag warnings for the response."""
+    tier.warnings = pricing.duplicate_tag_warnings(tier, crud.get_event_tiers(db, tier.event_id))
+    return tier
+
+
 def _handle_tier_integrity_error(db: Session, error: IntegrityError) -> None:
     error_message = str(getattr(error, "orig", error)).lower()
     if _constraint_name(error) == "uq_ticket_tier_event_name" or "unique" in error_message:
@@ -433,7 +440,7 @@ def create_ticket_tier(
 ):
     try:
         _get_event_or_404(db, event_id)
-        return crud.create_tier(db, event_id, tier)
+        return _with_tier_warnings(db, crud.create_tier(db, event_id, tier))
     except HTTPException:
         raise
     except IntegrityError as error:
@@ -471,6 +478,16 @@ def update_ticket_tier(
         for field in ("name", "price", "sale_phase", "sort_order"):
             if field in updates and updates[field] is None:
                 raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+        snapshot_count, _ = crud.tier_sales_summary(db, tier_id)
+        if "price" in updates and updates["price"] != tier.price and snapshot_count:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"The price of {tier.name} cannot change: it has recorded sales in "
+                    f"{snapshot_count} snapshot(s), which were valued at "
+                    f"KES {tier.price:,.0f}. Add a new tier for the new price instead."
+                ),
+            )
         new_quantity = updates.get("quantity_available")
         if new_quantity is not None:
             _, max_sold = crud.tier_sales_summary(db, tier_id)
@@ -482,7 +499,7 @@ def update_ticket_tier(
                         "tickets already recorded as sold for this tier"
                     ),
                 )
-        return crud.update_tier(db, tier, updates)
+        return _with_tier_warnings(db, crud.update_tier(db, tier, updates))
     except HTTPException:
         raise
     except IntegrityError as error:

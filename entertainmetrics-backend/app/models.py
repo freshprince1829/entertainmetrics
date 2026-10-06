@@ -201,9 +201,30 @@ class TicketTier(Base):
     is_premium = Column(Boolean, nullable=False, default=False)
     sort_order = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Added after the table existed (see database.ensure_added_columns).
+    access_level = Column(String, nullable=False, default="general", server_default="general")
+    audience = Column(String, nullable=False, default="public", server_default="public")
+    partner_name = Column(String, nullable=True)
 
     event = relationship("Event", back_populates="tiers")
     sales = relationship("SnapshotTierSales", back_populates="tier")
+
+    # Derived, read-only fields for API responses.
+    @property
+    def sales_snapshot_count(self) -> int:
+        return len(self.sales)
+
+    @property
+    def price_multiplier(self) -> float | None:
+        from .pricing import price_multiplier
+
+        return price_multiplier(self)
+
+    @property
+    def price_band(self) -> str:
+        from .pricing import price_band
+
+        return price_band(self)
 
 
 class SnapshotTierSales(Base):
@@ -223,6 +244,8 @@ class SnapshotTierSales(Base):
     )
     tier_id = Column(Integer, ForeignKey("ticket_tiers.id"), nullable=False, index=True)
     tickets_sold = Column(Integer, nullable=False)
+    # Cumulative people scanned in for this tier (added later; optional).
+    checked_in = Column(Integer, nullable=True)
 
     snapshot = relationship("TicketSalesSnapshot", back_populates="tier_sales_rows")
     tier = relationship("TicketTier", back_populates="sales")

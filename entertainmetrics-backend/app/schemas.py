@@ -376,6 +376,8 @@ class FinalizeActualsResponse(FinalizePreview):
 # "premium" is for VIP / VVIP tiers; a tier is premium exactly when its
 # sale_phase is "premium" (is_premium in responses is derived from it).
 SalePhase = Literal["early_bird", "advance", "standard", "last_minute", "gate", "premium"]
+AccessLevel = Literal["general", "premium", "vip", "vvip", "all_access", "group"]
+Audience = Literal["public", "partner", "group", "complimentary"]
 
 
 class TicketTierCreate(BaseModel):
@@ -384,6 +386,9 @@ class TicketTierCreate(BaseModel):
     quantity_available: int | None = Field(default=None, ge=0)
     sale_phase: SalePhase = "standard"
     sort_order: int = 0
+    access_level: AccessLevel = "general"
+    audience: Audience = "public"
+    partner_name: str | None = Field(default=None, max_length=80)
 
     @field_validator("name")
     @classmethod
@@ -400,6 +405,9 @@ class TicketTierUpdate(BaseModel):
     quantity_available: int | None = Field(default=None, ge=0)
     sale_phase: SalePhase | None = None
     sort_order: int | None = None
+    access_level: AccessLevel | None = None
+    audience: Audience | None = None
+    partner_name: str | None = Field(default=None, max_length=80)
 
     @field_validator("name")
     @classmethod
@@ -424,6 +432,14 @@ class TicketTierResponse(BaseModel):
     is_premium: bool
     sort_order: int
     created_at: datetime | None = None
+    # Optional fields added with access levels / audiences.
+    access_level: str = "general"
+    audience: str = "public"
+    partner_name: str | None = None
+    price_multiplier: float | None = None
+    price_band: str | None = None
+    sales_snapshot_count: int = 0
+    warnings: list[str] = []
 
 
 class PriceRangeResponse(BaseModel):

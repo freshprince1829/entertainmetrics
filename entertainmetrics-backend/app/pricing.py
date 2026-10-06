@@ -9,6 +9,21 @@ from . import models
 from .sales import as_utc, pct, sort_snapshots
 
 SALE_PHASES = ("early_bird", "advance", "standard", "last_minute", "gate", "premium")
+ACCESS_LEVELS = ("general", "premium", "vip", "vvip", "all_access", "group")
+AUDIENCES = ("public", "partner", "group", "complimentary")
+# Access levels that make a tier premium (alongside the "premium" sale phase).
+PREMIUM_ACCESS_LEVELS = ("premium", "vip", "vvip", "all_access")
+
+# Price bands, by price relative to the event's base price. A descriptive
+# label for the affordability profile, not a demand estimate.
+PRICE_BAND_DISCOUNT_BELOW = 0.9    # under 90% of base -> "discount"
+PRICE_BAND_STANDARD_UP_TO = 1.25   # up to 125% of base -> "standard"
+PRICE_BAND_PREMIUM_UP_TO = 3.0     # up to 3x base -> "premium", above -> "luxury"
+PRICE_BANDS = ("free", "discount", "standard", "premium", "luxury")
+
+
+def is_premium_tier(sale_phase: str, access_level: str) -> bool:
+    return sale_phase == "premium" or access_level in PREMIUM_ACCESS_LEVELS
 
 # The base price is the cheapest regular (non-premium) tier sold in one of
 # these phases, so VIP prices and early-bird discounts never distort the
@@ -31,8 +46,13 @@ def sorted_tiers(tiers: list[models.TicketTier]) -> list[models.TicketTier]:
 
 def base_price(event: models.Event, tiers: list[models.TicketTier]) -> tuple[float, str]:
     """Return (price, source) where source explains where the price came from."""
+    # Partner, group and complimentary tiers are discounted for a specific
+    # audience, so like premium tiers they never set the base price.
     candidates = [
-        t for t in tiers if t.sale_phase in BASE_PRICE_PHASES and not t.is_premium
+        t for t in tiers
+        if t.sale_phase in BASE_PRICE_PHASES
+        and not t.is_premium
+        and (t.audience or "public") == "public"
     ]
     if candidates:
         tier = min(candidates, key=lambda t: t.price)
@@ -277,3 +297,43 @@ def compute_tier_patterns(
         "tier_events_used": used,
         "tier_sufficient_history": used >= MIN_EVENTS_FOR_TIER_PATTERNS,
     }
+
+
+def price_multiplier(tier: models.TicketTier) -> float | None:
+    """Tier price relative to the event's base price (1.0 = base price)."""
+    event = tier.event
+    if event is None:
+        return None
+    base, _ = base_price(event, event.tiers)
+    if not base:
+        return None
+    return round(tier.price / base, 2)
+
+
+def price_band(tier: models.TicketTier) -> str:
+    if tier.price == 0:
+        return "free"
+    multiplier = price_multiplier(tier)
+    if multiplier is None:
+        return "standard"
+    if multiplier < PRICE_BAND_DISCOUNT_BELOW:
+        return "discount"
+    if multiplier <= PRICE_BAND_STANDARD_UP_TO:
+        return "standard"
+    if multiplier <= PRICE_BAND_PREMIUM_UP_TO:
+        return "premium"
+    return "luxury"
+
+
+def duplicate_tag_warnings(tier: models.TicketTier, tiers: list[models.TicketTier]) -> list[str]:
+    """Warn (not reject) when another tier has the same tags and price."""
+    def key(t):
+        return (t.access_level, t.sale_phase, t.audience, round(t.price, 2))
+
+    twins = [t.name for t in tiers if t.id != tier.id and key(t) == key(tier)]
+    if not twins:
+        return []
+    return [
+        f"{tier.name} has the same access level, sale phase, audience and price as "
+        f"{', '.join(twins)}. Check this is not a duplicate tier."
+    ]
