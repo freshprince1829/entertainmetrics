@@ -19,6 +19,7 @@ import { localInputValue, withLocalOffset } from "../datetime";
 import { tierColor } from "../tiers";
 import { TierAnalyticsPanel } from "./TierAnalytics";
 import { GateMode, TierStepper } from "./SalesEntry";
+import { SalesImport } from "./SalesImport";
 
 // Chart surface, used for the 2px gaps between stacked segments.
 const SURFACE = "#141416";
@@ -639,7 +640,7 @@ function CloseOutPanel({ event, preview, onFinalized }) {
   );
 }
 
-export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
+export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTiersChanged }) {
   const snapshotsQuery = useApiData(`/events/${event.id}/sales-snapshots`);
   const progressQuery = useApiData(`/events/${event.id}/sales-progress`);
   const [liveVersion, setLiveVersion] = useState(0);
@@ -746,6 +747,15 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
       <Notice tone="success" onDismiss={() => setSavedNotice("")}>
         {savedNotice}
       </Notice>
+
+      <SalesImport
+        event={event}
+        tiers={tiers}
+        onImported={() => {
+          reloadSales();
+          onTiersChanged?.();
+        }}
+      />
     </section>
   );
 }

@@ -20,9 +20,16 @@ async function request(path, options) {
 
   if (!res.ok) {
     const detail = data?.detail;
-    throw new Error(
-      typeof detail === "string" ? detail : `Request failed (${res.status})`,
-    );
+    const message =
+      typeof detail === "string"
+        ? detail
+        : typeof detail?.message === "string"
+          ? detail.message
+          : `Request failed (${res.status})`;
+    const error = new Error(message);
+    // Structured details (e.g. a list of import errors) stay available.
+    error.detail = detail;
+    throw error;
   }
 
   return data;

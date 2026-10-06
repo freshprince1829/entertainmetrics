@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, ensure_added_columns, get_db
-from . import crud, models, pricing, ranges, sales, schemas, tier_analytics
+from . import crud, models, pricing, ranges, sales, sales_import, schemas, tier_analytics
 
 Base.metadata.create_all(bind=engine)
 ensure_added_columns(engine)
@@ -340,6 +340,88 @@ def get_revenue_breakdown(event_id: int, db: Session = Depends(get_db)):
         return pricing.compute_revenue_breakdown(event, tiers, snapshots)
     except HTTPException:
         raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+def _import_tier(event_id: int, spec: schemas.ImportTierSpec, sort_order: int, tier_id=None):
+    tier = models.TicketTier(
+        id=tier_id,
+        event_id=event_id,
+        name=(spec.name or spec.ticket_type).strip(),
+        price=spec.price,
+        quantity_available=spec.quantity_available,
+        sale_phase=spec.sale_phase,
+        access_level=spec.access_level,
+        audience=spec.audience,
+        partner_name=spec.partner_name,
+        sort_order=sort_order,
+    )
+    crud._apply_derived_tier_fields(tier)
+    return tier
+
+
+@app.post("/events/{event_id}/sales-import", response_model=schemas.SalesImportResponse)
+def import_sales_csv(
+    event_id: int,
+    request: schemas.SalesImportRequest,
+    dry_run: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Import cumulative ticket sales from CSV text. dry_run=true (default)
+    only previews. dry_run=false writes every snapshot (and any requested new
+    tiers) in one transaction, or nothing at all (422 with the errors)."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        next_order = max((t.sort_order or 0 for t in tiers), default=-1) + 1
+        created_names = []
+
+        if dry_run:
+            # New tiers exist only in memory, with placeholder negative ids.
+            def factory(spec):
+                created_names.append(spec.ticket_type)
+                return _import_tier(event_id, spec, next_order + len(created_names) - 1,
+                                    tier_id=-len(created_names))
+        else:
+            def factory(spec):
+                tier = _import_tier(event_id, spec, next_order + len(created_names))
+                db.add(tier)
+                db.flush()  # real id, rolled back if the import fails
+                created_names.append(tier.name)
+                return tier
+
+        result = sales_import.run_import(
+            event=event, existing_tiers=tiers, existing_snapshots=snapshots,
+            request=request, tier_factory=factory,
+        )
+        built = result.pop("_built")
+        if dry_run:
+            return {**result, "dry_run": True}
+        if not result["can_import"]:
+            db.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Nothing was imported. Fix these problems and try again.",
+                    "errors": result["errors"],
+                    "unmatched_types": result["unmatched_types"],
+                },
+            )
+        for snapshot in built:
+            db.add(snapshot)
+        db.commit()
+        return {
+            **result,
+            "dry_run": False,
+            "snapshots_created": len(built),
+            "tiers_created": created_names,
+        }
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 

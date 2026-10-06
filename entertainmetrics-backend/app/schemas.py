@@ -559,3 +559,66 @@ class TierPatternsResponse(BaseModel):
     early_bird_tiers_sold_out: int
     explanation: str
     note: str
+
+
+class ImportTierSpec(BaseModel):
+    """A tier to create for an unmatched ticket type during a CSV import."""
+    ticket_type: str = Field(min_length=1)
+    name: str | None = Field(default=None, max_length=80)
+    price: float = Field(ge=0)
+    quantity_available: int | None = Field(default=None, ge=0)
+    sale_phase: SalePhase = "standard"
+    access_level: AccessLevel = "general"
+    audience: Audience = "public"
+    partner_name: str | None = Field(default=None, max_length=80)
+
+
+class SalesImportRequest(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=1_000_000)
+    # Offset applied to date/times without a timezone (e.g. 180 for Nairobi).
+    utc_offset_minutes: int = Field(default=0, ge=-720, le=840)
+    # Unmatched ticket type -> existing tier id.
+    mappings: dict[str, int] = {}
+    create_tiers: list[ImportTierSpec] = []
+
+
+class ImportRow(BaseModel):
+    row_number: int
+    recorded_at: datetime | None = None
+    ticket_type: str
+    quantity: int | None = None
+    revenue: float | None = None
+    scanned_in: int | None = None
+    status: str
+    tier_id: int | None = None
+    tier_name: str | None = None
+    errors: list[str]
+
+
+class UnmatchedTicketType(BaseModel):
+    ticket_type: str
+    rows: int
+    suggested_access_level: str
+    suggested_sale_phase: str
+    suggested_audience: str
+    suggested_partner_name: str | None = None
+    suggested_price: float | None = None
+
+
+class ImportSnapshotPreview(BaseModel):
+    recorded_at: datetime
+    tickets_sold_total: int
+    gate_tickets_sold: int
+    revenue_to_date: float | None = None
+    attendance_checked_in: int | None = None
+
+
+class SalesImportResponse(BaseModel):
+    dry_run: bool
+    can_import: bool
+    rows: list[ImportRow]
+    unmatched_types: list[UnmatchedTicketType]
+    errors: list[str]
+    snapshots: list[ImportSnapshotPreview]
+    snapshots_created: int = 0
+    tiers_created: list[str] = []
