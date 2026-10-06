@@ -3,8 +3,7 @@ from tests.conftest import add_tier, make_event
 
 def test_tier_crud(client):
     event = make_event(client)
-    vip = add_tier(client, event["id"], "VIP", 10000, sale_phase="advance",
-                   is_premium=True, quantity_available=100, sort_order=2)
+    vip = add_tier(client, event["id"], "VIP", 10000, sale_phase="premium", quantity_available=100, sort_order=2)
     early = add_tier(client, event["id"], " Early Bird ", 1500, sale_phase="early_bird",
                      quantity_available=300, sort_order=1)
     assert early["name"] == "Early Bird"          # whitespace trimmed
@@ -74,7 +73,7 @@ def test_price_range_weighted_by_quantity(client):
     event = make_event(client, ticket_price=1800)
     add_tier(client, event["id"], "Early Bird", 1000, sale_phase="early_bird", quantity_available=200)
     add_tier(client, event["id"], "Advance", 2000, sale_phase="advance", quantity_available=600)
-    add_tier(client, event["id"], "VIP", 10000, sale_phase="advance", is_premium=True,
+    add_tier(client, event["id"], "VIP", 10000, sale_phase="premium",
              quantity_available=200)
 
     data = client.get(f"/events/{event['id']}/price-range").json()
@@ -113,7 +112,7 @@ def test_event_responses_include_optional_tier_summary(client):
     plain = make_event(client, event_name="Plain")
     tiered = make_event(client, event_name="Tiered")
     add_tier(client, tiered["id"], "Advance", 2500)
-    add_tier(client, tiered["id"], "VVIP", 20000, is_premium=True)
+    add_tier(client, tiered["id"], "VVIP", 20000, sale_phase="premium")
 
     events = {e["event_name"]: e for e in client.get("/events").json()}
     assert events["Plain"]["tier_count"] == 0
@@ -124,3 +123,27 @@ def test_event_responses_include_optional_tier_summary(client):
     recent = {e["event_name"]: e for e in client.get("/dashboard/recent-events").json()}
     assert recent["Tiered"]["price_high"] == 20000
     assert plain["ticket_price"] == events["Plain"]["ticket_price"]
+
+
+def test_premium_status_follows_the_premium_sale_phase(client):
+    event = make_event(client)
+    vip = add_tier(client, event["id"], "VIP", 10000, sale_phase="premium")
+    assert vip["sale_phase"] == "premium"
+    assert vip["is_premium"] is True
+
+    # The old checkbox field is ignored: premium comes from the phase only.
+    standard = add_tier(client, event["id"], "Standard", 2000, is_premium=True)
+    assert standard["is_premium"] is False
+
+    demoted = client.patch(f"/events/{event['id']}/tiers/{vip['id']}",
+                           json={"sale_phase": "advance"}).json()
+    assert demoted["is_premium"] is False
+    promoted = client.patch(f"/events/{event['id']}/tiers/{standard['id']}",
+                            json={"sale_phase": "premium"}).json()
+    assert promoted["is_premium"] is True
+
+    # Premium tiers never set the base price, even when they are the cheapest.
+    cheap_vip = make_event(client, event_name="Cheap VIP", ticket_price=1500)
+    add_tier(client, cheap_vip["id"], "VIP", 500, sale_phase="premium")
+    add_tier(client, cheap_vip["id"], "Standard", 2000)
+    assert client.get(f"/events/{cheap_vip['id']}/price-range").json()["base_price"] == 2000

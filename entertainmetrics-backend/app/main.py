@@ -467,8 +467,8 @@ def update_ticket_tier(
         _get_event_or_404(db, event_id)
         tier = _get_tier_or_404(db, event_id, tier_id)
         updates = changes.model_dump(exclude_unset=True)
-        # name, price, sale_phase, is_premium and sort_order cannot be null.
-        for field in ("name", "price", "sale_phase", "is_premium", "sort_order"):
+        # name, price, sale_phase and sort_order cannot be null.
+        for field in ("name", "price", "sale_phase", "sort_order"):
             if field in updates and updates[field] is None:
                 raise HTTPException(status_code=422, detail=f"{field} cannot be null")
         new_quantity = updates.get("quantity_available")

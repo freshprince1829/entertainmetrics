@@ -6,6 +6,7 @@ export const PHASE_LABELS = {
   standard: "Standard",
   last_minute: "Last minute",
   gate: "Gate",
+  premium: "Premium",
 };
 
 // Tier colour follows the tier's position in the event's ordered tier list

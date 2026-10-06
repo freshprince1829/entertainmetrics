@@ -22,8 +22,7 @@ def tiered_event(client, **extra):
                        marketing_spend=50000, **extra)
     advance = add_tier(client, event["id"], "Advance", 2000, sale_phase="advance",
                        quantity_available=4000)
-    vip = add_tier(client, event["id"], "VIP", 50000, sale_phase="advance",
-                   is_premium=True, quantity_available=1000)
+    vip = add_tier(client, event["id"], "VIP", 50000, sale_phase="premium", quantity_available=1000)
     return event, advance, vip
 
 
@@ -105,7 +104,7 @@ def _completed_tier_event(client, name, sold):
     tiers = [
         add_tier(client, event["id"], "Early Bird", 1000, sale_phase="early_bird"),
         add_tier(client, event["id"], "Standard", 2000),
-        add_tier(client, event["id"], "VIP", 10000, is_premium=True),
+        add_tier(client, event["id"], "VIP", 10000, sale_phase="premium"),
     ]
     tier_snapshot(client, event["id"], at(TODAY - timedelta(days=5), 22), list(zip(tiers, sold)))
 

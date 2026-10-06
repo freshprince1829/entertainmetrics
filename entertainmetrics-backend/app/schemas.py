@@ -373,7 +373,9 @@ class FinalizeActualsResponse(FinalizePreview):
     event_id: int
 
 
-SalePhase = Literal["early_bird", "advance", "standard", "last_minute", "gate"]
+# "premium" is for VIP / VVIP tiers; a tier is premium exactly when its
+# sale_phase is "premium" (is_premium in responses is derived from it).
+SalePhase = Literal["early_bird", "advance", "standard", "last_minute", "gate", "premium"]
 
 
 class TicketTierCreate(BaseModel):
@@ -381,7 +383,6 @@ class TicketTierCreate(BaseModel):
     price: float = Field(ge=0)
     quantity_available: int | None = Field(default=None, ge=0)
     sale_phase: SalePhase = "standard"
-    is_premium: bool = False
     sort_order: int = 0
 
     @field_validator("name")
@@ -398,7 +399,6 @@ class TicketTierUpdate(BaseModel):
     price: float | None = Field(default=None, ge=0)
     quantity_available: int | None = Field(default=None, ge=0)
     sale_phase: SalePhase | None = None
-    is_premium: bool | None = None
     sort_order: int | None = None
 
     @field_validator("name")
