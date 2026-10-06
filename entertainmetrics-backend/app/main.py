@@ -368,7 +368,10 @@ def get_live_vs_predicted(event_id: int, db: Session = Depends(get_db)):
 def get_event_day_patterns(db: Session = Depends(get_db)):
     try:
         events = crud.get_events_with_snapshots(db)
-        return sales.compute_event_day_patterns(events, date.today())
+        return {
+            **sales.compute_event_day_patterns(events, date.today()),
+            **pricing.compute_tier_patterns(events, date.today()),
+        }
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
@@ -612,8 +615,12 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
             raise HTTPException(status_code=404, detail="Event not found")
 
         linked_artists = _get_linked_artists(event)
+        snapshots = crud.get_sales_snapshots(db, event.id)
+        prices = pricing.prediction_prices(
+            event, crud.get_event_tiers(db, event.id), snapshots, data.ticket_price
+        )
         result = _run_prediction_math(
-            ticket_price=data.ticket_price,
+            ticket_price=prices["attendance_price"],
             marketing_spend=data.marketing_spend,
             capacity=data.capacity,
             linked_artists=linked_artists,
@@ -621,7 +628,6 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
 
         model_version = "v1-rule-based"
         sales_signal = None
-        snapshots = crud.get_sales_snapshots(db, event.id)
         if len(snapshots) >= sales.MIN_SNAPSHOTS_FOR_SALES_SIGNAL:
             patterns = sales.compute_event_day_patterns(
                 crud.get_events_with_snapshots(db), date.today(), exclude_event_id=event.id
@@ -638,10 +644,18 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
         if sales_signal is not None:
             model_version = "v1-rule-based+sales"
             result["predicted_attendance"] = sales_signal["predicted_attendance"]
-            result["predicted_revenue"] = round(
-                sales_signal["predicted_attendance"] * data.ticket_price, 2
-            )
             result["confidence_score"] = sales_signal["confidence_score"]
+        if sales_signal is not None or prices["uses_tiers"]:
+            # Revenue always follows the final attendance and effective price.
+            result["predicted_revenue"] = round(
+                result["predicted_attendance"] * prices["effective_price"], 2
+            )
+        if prices["uses_tiers"]:
+            model_version += "+tiers"
+            result["confidence_score"] = round(
+                max(0.3, min(result["confidence_score"] + prices["confidence_boost"], 0.95)),
+                2,
+            )
 
         if result["linked_artist_count"] > 0:
             insight_summary = (
@@ -657,6 +671,8 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
             )
         if sales_signal is not None:
             insight_summary += " " + sales_signal["insight"]
+        if prices["note"]:
+            insight_summary += " " + prices["note"]
 
         prediction_record = {
             "event_id": data.event_id,

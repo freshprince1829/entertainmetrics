@@ -333,6 +333,11 @@ class EventDayPatternsResponse(BaseModel):
     min_events_required: int
     sufficient_history: bool
     explanation: str
+    # Optional tier patterns (from completed events with tier-level sales).
+    avg_premium_revenue_share_pct: float | None = None
+    avg_early_bird_ticket_share_pct: float | None = None
+    tier_events_used: int = 0
+    tier_sufficient_history: bool = False
 
 
 class FinalizeActualsResponse(FinalizePreview):

@@ -124,7 +124,11 @@ def get_events_with_snapshots(db: Session):
     return (
         db.query(models.Event)
         .join(models.TicketSalesSnapshot)
-        .options(selectinload(models.Event.sales_snapshots))
+        .options(
+            selectinload(models.Event.sales_snapshots)
+            .selectinload(models.TicketSalesSnapshot.tier_sales_rows)
+            .selectinload(models.SnapshotTierSales.tier)
+        )
         .distinct()
         .all()
     )

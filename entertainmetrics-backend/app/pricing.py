@@ -15,6 +15,15 @@ SALE_PHASES = ("early_bird", "advance", "standard", "last_minute", "gate")
 # attendance formula.
 BASE_PRICE_PHASES = ("standard", "advance")
 
+# Confidence is raised slightly when the event has tier data: defined tiers,
+# and again when tier-level sales have actually been recorded.
+TIER_DEFINED_CONFIDENCE_BOOST = 0.02
+TIER_SALES_CONFIDENCE_BOOST = 0.01
+
+# Tier patterns (premium revenue share, early-bird ticket share) need at least
+# this many completed events, matching the other learned patterns.
+MIN_EVENTS_FOR_TIER_PATTERNS = 2
+
 
 def sorted_tiers(tiers: list[models.TicketTier]) -> list[models.TicketTier]:
     return sorted(tiers, key=lambda t: (t.sort_order or 0, t.price, t.id or 0))
@@ -152,4 +161,119 @@ def compute_revenue_breakdown(
         "base_price": base,
         "tiers": items,
         "explanation": " ".join(sentences),
+    }
+
+
+def prediction_prices(
+    event: models.Event,
+    tiers: list[models.TicketTier],
+    snapshots: list[models.TicketSalesSnapshot],
+    requested_price: float,
+) -> dict:
+    """Decide which prices a prediction uses.
+
+    - No tiers: the requested ticket price for both steps (unchanged behaviour).
+    - Tiers and the event's stored price requested: attendance uses the base
+      price; revenue uses the realized average price from tier sales, else the
+      average tier price, else the event ticket price.
+    - Tiers but a different price requested: a what-if run, so the requested
+      price is used for both steps, as before.
+    """
+    if not tiers:
+        return {
+            "uses_tiers": False,
+            "attendance_price": requested_price,
+            "effective_price": requested_price,
+            "price_low": requested_price,
+            "price_high": requested_price,
+            "confidence_boost": 0.0,
+            "note": None,
+        }
+
+    tier_range = price_range(tiers)
+    if requested_price != event.ticket_price:
+        return {
+            "uses_tiers": False,
+            "attendance_price": requested_price,
+            "effective_price": requested_price,
+            "price_low": requested_price,
+            "price_high": requested_price,
+            "confidence_boost": 0.0,
+            "note": (
+                f"What-if ticket price KES {requested_price:,.0f} was used for both "
+                "attendance and revenue instead of the event's ticket tiers."
+            ),
+        }
+
+    base, base_source = base_price(event, tiers)
+    breakdown = compute_revenue_breakdown(event, tiers, snapshots)
+    boost = TIER_DEFINED_CONFIDENCE_BOOST
+    if breakdown["has_tier_data"] and breakdown["realized_average_price"] is not None:
+        effective = breakdown["realized_average_price"]
+        effective_source = (
+            f"realized average price from {breakdown['tickets_sold_total']:,} tickets "
+            "sold across tiers"
+        )
+        boost += TIER_SALES_CONFIDENCE_BOOST
+    elif tier_range["average_price_by_quantity"] is not None:
+        effective = tier_range["average_price_by_quantity"]
+        effective_source = (
+            "average tier price weighted by quantity available"
+            if tier_range["weighting"] == "quantity_available"
+            else "simple average of tier prices (quantities not all known)"
+        )
+    else:
+        effective, effective_source = event.ticket_price, "event ticket price"
+
+    return {
+        "uses_tiers": True,
+        "attendance_price": base,
+        "effective_price": effective,
+        "price_low": tier_range["price_low"],
+        "price_high": tier_range["price_high"],
+        "confidence_boost": boost,
+        "note": (
+            f"Pricing: the attendance formula used the base price KES {base:,.0f} "
+            f"({base_source}), so premium and early-bird prices do not distort demand; "
+            f"revenue used an effective price of KES {effective:,.2f} ({effective_source}). "
+            f"Confidence includes +{boost:.2f} for ticket tier data."
+        ),
+    }
+
+
+def compute_tier_patterns(
+    events: list[models.Event], today, exclude_event_id: int | None = None
+) -> dict:
+    """Average premium share of revenue and early-bird share of tickets across
+    completed events (date passed) whose latest tier snapshot sold tickets."""
+    premium_shares = []
+    early_bird_shares = []
+    for event in events:
+        if event.id == exclude_event_id or event.event_date >= today:
+            continue
+        latest = latest_tier_snapshot(event.sales_snapshots)
+        if latest is None:
+            continue
+        rows = latest.tier_sales_rows
+        tickets = sum(row.tickets_sold for row in rows)
+        revenue = sum(row.tickets_sold * row.tier.price for row in rows)
+        if not tickets or not revenue:
+            continue
+        premium_shares.append(
+            sum(r.tickets_sold * r.tier.price for r in rows if r.tier.is_premium) / revenue
+        )
+        early_bird_shares.append(
+            sum(r.tickets_sold for r in rows if r.tier.sale_phase == "early_bird") / tickets
+        )
+
+    used = len(premium_shares)
+    return {
+        "avg_premium_revenue_share_pct": (
+            round(sum(premium_shares) / used * 100, 1) if used else None
+        ),
+        "avg_early_bird_ticket_share_pct": (
+            round(sum(early_bird_shares) / used * 100, 1) if used else None
+        ),
+        "tier_events_used": used,
+        "tier_sufficient_history": used >= MIN_EVENTS_FOR_TIER_PATTERNS,
     }
