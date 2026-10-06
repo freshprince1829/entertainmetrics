@@ -72,3 +72,13 @@ export const THUMB_GRADIENTS = [
 export function thumbGradient(id) {
   return THUMB_GRADIENTS[Number(id) % THUMB_GRADIENTS.length];
 }
+
+// "KES 2,500 – 20,000" when an event has tiers at different prices,
+// otherwise the single ticket price.
+export function formatPriceRange(event) {
+  if (!event) return "-";
+  const { price_low: low, price_high: high } = event;
+  if (low == null || high == null) return formatKes(event.ticket_price);
+  if (low === high) return formatKes(low);
+  return `${formatKes(low)} – ${Number(high).toLocaleString("en-KE", { maximumFractionDigits: 0 })}`;
+}

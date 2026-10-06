@@ -2436,3 +2436,214 @@ td .pill {
     display: none;
   }
 }
+
+/* ---------- Ticket tiers ---------- */
+.tiers-section {
+  margin-top: 28px;
+}
+
+.tier-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.tier-summary > div {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.tier-summary span,
+.tier-summary small {
+  display: block;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.tier-summary strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 18px;
+  margin: 4px 0 2px;
+}
+
+.tier-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tier-list > li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.tier-list > li.tier-edit {
+  display: block;
+}
+
+.tier-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.tier-main .event-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-main .pill {
+  margin: 0;
+  font-size: 11px;
+}
+
+.tier-price {
+  font-family: var(--display);
+  white-space: nowrap;
+}
+
+.tier-swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.chip-button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--body);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip-button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tier-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tier-totals {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 12px 0 0;
+  line-height: 1.6;
+}
+
+.tier-charts {
+  margin-top: 8px;
+}
+
+.tier-charts .chart-box {
+  margin-bottom: 18px;
+}
+
+.tier-share {
+  margin-bottom: 18px;
+}
+
+.tier-share-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tier-share-head h3 {
+  margin: 0;
+}
+
+.tier-share ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tier-share li {
+  display: grid;
+  grid-template-columns: minmax(90px, 140px) 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.tier-share-name {
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tier-share-name .pill {
+  margin: 0;
+  font-size: 11px;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+}
+
+.share-bar {
+  display: block;
+  height: 6px;
+  min-width: 2px;
+  border-radius: 0 4px 4px 0;
+}
+
+.share-label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .tier-share li {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .tier-list > li {
+    flex-wrap: wrap;
+  }
+}

@@ -24,6 +24,7 @@ import {
   formatDate,
   formatKes,
   formatNumber,
+  formatPriceRange,
   isUpcoming,
   thumbGradient,
 } from "../format";
@@ -889,7 +890,7 @@ function DashboardPage() {
                           {event.venue}
                           <div className="event-sub">{event.city}</div>
                         </td>
-                        <td className="nowrap">{formatKes(event.ticket_price)}</td>
+                        <td className="nowrap">{formatPriceRange(event)}</td>
                         <td>{row?.forecastAtt != null ? formatNumber(row.forecastAtt) : "—"}</td>
                       </tr>
                     );

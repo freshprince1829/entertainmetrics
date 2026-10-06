@@ -13,11 +13,13 @@ import {
   StatCard,
 } from "../components/ui";
 import { SalesTrackingSection } from "../components/SalesTracking";
+import { TicketTiersEditor } from "../components/TicketTiers";
 import {
   canRecordActuals,
   formatDate,
   formatKes,
   formatNumber,
+  formatPriceRange,
   isUpcoming,
   thumbGradient,
 } from "../format";
@@ -249,6 +251,8 @@ function ActualsForm({ event, onSaved }) {
 
 function EventDrawer({ event, artists, onClose, onEventUpdated }) {
   const lineupQuery = useApiData(`/events/${event.id}/lineup`);
+  const tiersQuery = useApiData(`/events/${event.id}/tiers`);
+  const tiers = tiersQuery.data ?? [];
   const lineup = useMemo(
     () =>
       [...(lineupQuery.data ?? [])].sort(
@@ -328,8 +332,11 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
           <small>{event.city}</small>
         </div>
         <div>
-          <span>Ticket price</span>
-          <strong>{formatKes(event.ticket_price)}</strong>
+          <span>{event.tier_count > 0 ? "Ticket prices" : "Ticket price"}</span>
+          <strong>{formatPriceRange(event)}</strong>
+          {event.tier_count > 0 && (
+            <small>{event.tier_count} ticket tiers</small>
+          )}
         </div>
         <div>
           <span>Marketing spend</span>
@@ -371,7 +378,17 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
         </Link>
       </div>
 
-      <SalesTrackingSection event={event} onEventUpdated={onEventUpdated} />
+      <TicketTiersEditor
+        event={event}
+        tiers={tiers}
+        onChanged={() => {
+          tiersQuery.reload();
+          // Refresh the event list so price ranges update everywhere.
+          onEventUpdated();
+        }}
+      />
+
+      <SalesTrackingSection event={event} tiers={tiers} onEventUpdated={onEventUpdated} />
 
       <h2 className="drawer-heading">Lineup</h2>
       <p className="panel-subtext">
@@ -649,7 +666,10 @@ function EventsPage() {
                           {event.venue}
                           <div className="event-sub">{event.city}</div>
                         </td>
-                        <td>{formatKes(event.ticket_price)}</td>
+                        <td className="nowrap">
+                          {formatPriceRange(event)}
+                          {event.tier_count > 0 && <div className="event-sub">{event.tier_count} tiers</div>}
+                        </td>
                         <td>{formatNumber(event.capacity)}</td>
                         <td className="cell-bar">
                           {event.actual_attendance != null ? (
