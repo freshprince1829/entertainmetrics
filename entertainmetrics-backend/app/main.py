@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, ensure_added_columns, get_db
-from . import crud, models, pricing, ranges, sales, schemas
+from . import crud, models, pricing, ranges, sales, schemas, tier_analytics
 
 Base.metadata.create_all(bind=engine)
 ensure_added_columns(engine)
@@ -340,6 +340,31 @@ def get_revenue_breakdown(event_id: int, db: Session = Depends(get_db)):
         return pricing.compute_revenue_breakdown(event, tiers, snapshots)
     except HTTPException:
         raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/tier-analytics",
+    response_model=schemas.TierAnalyticsResponse,
+)
+def get_tier_analytics(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        return tier_analytics.compute_tier_analytics(event, tiers, snapshots)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/analytics/tier-patterns", response_model=schemas.TierPatternsResponse)
+def get_tier_patterns(db: Session = Depends(get_db)):
+    try:
+        events = crud.get_events_with_snapshots(db)
+        return tier_analytics.compute_cross_event_patterns(events, date.today())
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 

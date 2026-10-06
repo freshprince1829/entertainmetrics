@@ -60,7 +60,11 @@ def create_sales_snapshot(
     db_snapshot = models.TicketSalesSnapshot(event_id=event_id, **data)
     for sale in snapshot.tier_sales or []:
         db_snapshot.tier_sales_rows.append(
-            models.SnapshotTierSales(tier_id=sale.tier_id, tickets_sold=sale.tickets_sold)
+            models.SnapshotTierSales(
+                tier_id=sale.tier_id,
+                tickets_sold=sale.tickets_sold,
+                checked_in=sale.checked_in,
+            )
         )
     db.add(db_snapshot)
     db.commit()

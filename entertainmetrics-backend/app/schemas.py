@@ -238,6 +238,14 @@ class PredictedVsActualResponse(BaseModel):
 class TierSaleInput(BaseModel):
     tier_id: int
     tickets_sold: int = Field(ge=0)
+    # Optional cumulative people scanned in for this tier.
+    checked_in: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def check_checked_in(self):
+        if self.checked_in is not None and self.checked_in > self.tickets_sold:
+            raise ValueError("checked_in cannot exceed tickets_sold for a tier")
+        return self
 
 
 class SalesSnapshotCreate(BaseModel):
@@ -280,6 +288,7 @@ class TierSaleResponse(BaseModel):
     tier_name: str
     tier_price: float
     tickets_sold: int
+    checked_in: int | None = None
 
 
 class SalesSnapshotResponse(BaseModel):
@@ -479,3 +488,74 @@ class RevenueBreakdownResponse(BaseModel):
     base_price: float
     tiers: list[TierBreakdownItem]
     explanation: str
+
+
+class TierAnalyticsItem(BaseModel):
+    tier_id: int
+    name: str
+    price: float
+    sale_phase: str
+    access_level: str
+    audience: str
+    partner_name: str | None = None
+    price_band: str
+    is_premium: bool
+    quantity_available: int | None = None
+    tickets_sold: int
+    revenue: float
+    share_of_tickets_pct: float | None = None
+    share_of_revenue_pct: float | None = None
+    sell_through_pct: float | None = None
+    days_to_sell_out: float | None = None
+    realized_average_price: float | None = None
+    revenue_per_ticket: float | None = None
+    checked_in: int | None = None
+    show_rate_pct: float | None = None
+
+
+class TierGroupShare(BaseModel):
+    key: str
+    tickets: int
+    revenue: float
+    share_of_tickets_pct: float | None = None
+    share_of_revenue_pct: float | None = None
+
+
+class TierAnalyticsResponse(BaseModel):
+    event_id: int
+    has_tier_data: bool
+    message: str | None = None
+    snapshot_id: int | None = None
+    recorded_at: datetime | None = None
+    tickets_sold_total: int | None = None
+    revenue_total: float | None = None
+    realized_average_price: float | None = None
+    partner_discount_share_pct: float | None = None
+    partner_average_price: float | None = None
+    tiers: list[TierAnalyticsItem]
+    by_sale_phase: list[TierGroupShare]
+    by_access_level: list[TierGroupShare]
+    by_audience: list[TierGroupShare]
+    affordability_profile: list[TierGroupShare]
+    insights: list[str]
+    note: str
+
+
+class TierPatternGroup(BaseModel):
+    key: str
+    avg_share_of_tickets_pct: float
+    avg_share_of_revenue_pct: float
+    events_with_key: int
+
+
+class TierPatternsResponse(BaseModel):
+    events_used: int
+    min_events_required: int
+    sufficient_history: bool
+    by_access_level: list[TierPatternGroup]
+    by_sale_phase: list[TierPatternGroup]
+    by_audience: list[TierPatternGroup]
+    avg_early_bird_days_to_sell_out: float | None = None
+    early_bird_tiers_sold_out: int
+    explanation: str
+    note: str
