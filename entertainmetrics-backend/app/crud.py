@@ -109,6 +109,36 @@ def create_tier(db: Session, event_id: int, tier: schemas.TicketTierCreate):
     return db_tier
 
 
+COPIED_TIER_FIELDS = (
+    "name", "price", "quantity_available", "sale_phase", "access_level",
+    "audience", "partner_name",
+)
+
+
+def copy_tiers(db: Session, event_id: int, source_tiers, existing_tiers):
+    """Copy tiers to an event, skipping names it already has (any case)."""
+    taken = {t.name.strip().lower() for t in existing_tiers}
+    next_order = max((t.sort_order or 0 for t in existing_tiers), default=-1) + 1
+    created = []
+    for source in source_tiers:
+        if source.name.strip().lower() in taken:
+            continue
+        tier = models.TicketTier(
+            event_id=event_id,
+            sort_order=next_order,
+            **{field: getattr(source, field) for field in COPIED_TIER_FIELDS},
+        )
+        _apply_derived_tier_fields(tier)
+        db.add(tier)
+        created.append(tier)
+        taken.add(source.name.strip().lower())
+        next_order += 1
+    db.commit()
+    for tier in created:
+        db.refresh(tier)
+    return created
+
+
 def update_tier(db: Session, tier: models.TicketTier, changes: dict):
     for field, value in changes.items():
         setattr(tier, field, value)

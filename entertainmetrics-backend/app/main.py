@@ -555,6 +555,29 @@ def delete_ticket_tier(event_id: int, tier_id: int, db: Session = Depends(get_db
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
 
+@app.post(
+    "/events/{event_id}/tiers/copy-from/{source_event_id}",
+    response_model=list[schemas.TicketTierResponse],
+    status_code=201,
+)
+def copy_ticket_tiers(event_id: int, source_event_id: int, db: Session = Depends(get_db)):
+    """Copy all tiers from another event as new tiers (no sales are copied, so
+    prices stay editable). Names the event already has are skipped."""
+    try:
+        _get_event_or_404(db, event_id)
+        if db.get(models.Event, source_event_id) is None:
+            raise HTTPException(status_code=404, detail="Source event not found")
+        source_tiers = crud.get_event_tiers(db, source_event_id)
+        existing = crud.get_event_tiers(db, event_id)
+        return crud.copy_tiers(db, event_id, source_tiers, existing)
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
 @app.get("/events/{event_id}/price-range", response_model=schemas.PriceRangeResponse)
 def get_price_range(event_id: int, db: Session = Depends(get_db)):
     try:

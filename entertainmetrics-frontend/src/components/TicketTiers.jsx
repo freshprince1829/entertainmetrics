@@ -162,6 +162,50 @@ function EditTierRow({ eventId, tier, onDone, onError }) {
   );
 }
 
+function CopyTiersControl({ event, tiers, onCopied, onError }) {
+  const eventsQuery = useApiData("/events");
+  const [sourceId, setSourceId] = useState("");
+  const [copying, setCopying] = useState(false);
+  const sources = (eventsQuery.data ?? []).filter((e) => e.id !== event.id && e.tier_count > 0);
+  if (sources.length === 0) return null;
+
+  async function handleCopy() {
+    setCopying(true);
+    const source = sources.find((e) => String(e.id) === sourceId);
+    try {
+      const created = await apiPost(`/events/${event.id}/tiers/copy-from/${sourceId}`, {});
+      const skipped = source.tier_count - created.length;
+      onCopied(
+        `Copied ${created.length} tier${created.length === 1 ? "" : "s"} from ${source.event_name}` +
+          (skipped > 0 ? ` (${skipped} skipped: name already used).` : "."),
+      );
+      setSourceId("");
+    } catch (err) {
+      onError(err.message || "Failed to copy tiers");
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  return (
+    <div className="copy-tiers">
+      <Field label={tiers.length ? "Copy tiers from another event" : "Start from another event's tiers"}>
+        <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+          <option value="">Choose an event</option>
+          {sources.map((source) => (
+            <option key={source.id} value={source.id}>
+              {source.event_name} ({source.tier_count} tiers)
+            </option>
+          ))}
+        </select>
+      </Field>
+      <button type="button" className="ghost-button" onClick={handleCopy} disabled={!sourceId || copying}>
+        {copying ? "Copying…" : "Copy tiers"}
+      </button>
+    </div>
+  );
+}
+
 export function TicketTiersEditor({ event, tiers, onChanged }) {
   const priceRangeQuery = useApiData(`/events/${event.id}/price-range`);
   const [form, setForm, onChange] = useFormState(emptyTierForm);
@@ -301,6 +345,13 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
       <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
         {notice?.text}
       </Notice>
+
+      <CopyTiersControl
+        event={event}
+        tiers={tiers}
+        onCopied={(text) => changed(text)}
+        onError={(text) => setNotice({ tone: "error", text })}
+      />
 
       <form className="lineup-form" onSubmit={handleAdd}>
         <div className="form-section">Add a tier</div>
