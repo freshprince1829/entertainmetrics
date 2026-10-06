@@ -5,12 +5,12 @@ import { PHASE_LABELS, tierColor } from "../tiers";
 import { Field, Notice } from "./ui";
 
 const PRESETS = [
-  { name: "Early Bird", sale_phase: "early_bird", is_premium: false },
-  { name: "Advance", sale_phase: "advance", is_premium: false },
-  { name: "Last Minute", sale_phase: "last_minute", is_premium: false },
-  { name: "Gate", sale_phase: "gate", is_premium: false },
-  { name: "VIP", sale_phase: "advance", is_premium: true },
-  { name: "VVIP", sale_phase: "advance", is_premium: true },
+  { name: "Early Bird", sale_phase: "early_bird" },
+  { name: "Advance", sale_phase: "advance" },
+  { name: "Last Minute", sale_phase: "last_minute" },
+  { name: "Gate", sale_phase: "gate" },
+  { name: "VIP", sale_phase: "premium" },
+  { name: "VVIP", sale_phase: "premium" },
 ];
 
 const emptyTierForm = {
@@ -18,7 +18,6 @@ const emptyTierForm = {
   price: "",
   quantity_available: "",
   sale_phase: "standard",
-  is_premium: false,
 };
 
 function tierPayload(form) {
@@ -27,7 +26,6 @@ function tierPayload(form) {
     price: Number(form.price),
     quantity_available: form.quantity_available === "" ? null : Number(form.quantity_available),
     sale_phase: form.sale_phase,
-    is_premium: form.is_premium,
   };
 }
 
@@ -52,10 +50,6 @@ function TierFields({ form, onChange }) {
           ))}
         </select>
       </Field>
-      <label className="checkbox">
-        <input name="is_premium" type="checkbox" checked={form.is_premium} onChange={onChange} />
-        Premium (VIP / VVIP)
-      </label>
     </>
   );
 }
@@ -63,8 +57,8 @@ function TierFields({ form, onChange }) {
 function useFormState(initial) {
   const [form, setForm] = useState(initial);
   function onChange(e) {
-    const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
   }
   return [form, setForm, onChange];
 }
@@ -75,7 +69,6 @@ function EditTierRow({ eventId, tier, onDone, onError }) {
     price: String(tier.price),
     quantity_available: tier.quantity_available ?? "",
     sale_phase: tier.sale_phase,
-    is_premium: tier.is_premium,
   });
   const [saving, setSaving] = useState(false);
 
@@ -212,10 +205,7 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
               <li key={tier.id}>
                 <i className="tier-swatch" style={{ background: tierColor(index) }} aria-hidden="true" />
                 <div className="tier-main">
-                  <div className="event-title">
-                    {tier.name}
-                    {tier.is_premium && <span className="pill pill-mid">Premium</span>}
-                  </div>
+                  <div className="event-title">{tier.name}</div>
                   <div className="event-sub">
                     {PHASE_LABELS[tier.sale_phase] ?? tier.sale_phase} ·{" "}
                     {tier.quantity_available == null

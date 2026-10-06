@@ -67,7 +67,7 @@ def test_band_valid_with_tiers_and_sales(client):
                        marketing_spend=50000)
     advance = add_tier(client, event["id"], "Advance", 2000, sale_phase="advance",
                        quantity_available=4000)
-    vip = add_tier(client, event["id"], "VIP", 50000, is_premium=True, quantity_available=1000)
+    vip = add_tier(client, event["id"], "VIP", 50000, sale_phase="premium", quantity_available=1000)
     for days_ago, (a, v) in [(4, (100, 5)), (0, (300, 20))]:
         client.post(f"/events/{event['id']}/sales-snapshots", json={
             "recorded_at": at(TODAY - timedelta(days=days_ago)),

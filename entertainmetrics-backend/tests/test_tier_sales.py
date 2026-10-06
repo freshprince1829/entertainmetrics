@@ -15,8 +15,7 @@ def tiered(client):
                        quantity_available=200, sort_order=1),
         "adv": add_tier(client, event["id"], "Advance", 2000, sale_phase="advance",
                         quantity_available=1000, sort_order=2),
-        "vip": add_tier(client, event["id"], "VIP", 10000, sale_phase="advance",
-                        is_premium=True, quantity_available=50, sort_order=3),
+        "vip": add_tier(client, event["id"], "VIP", 10000, sale_phase="premium", quantity_available=50, sort_order=3),
         "gate": add_tier(client, event["id"], "Gate", 2500, sale_phase="gate", sort_order=4),
     }
     return event, tiers

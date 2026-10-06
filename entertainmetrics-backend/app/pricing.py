@@ -8,7 +8,7 @@ formula, and the average price used for revenue.
 from . import models
 from .sales import as_utc, pct, sort_snapshots
 
-SALE_PHASES = ("early_bird", "advance", "standard", "last_minute", "gate")
+SALE_PHASES = ("early_bird", "advance", "standard", "last_minute", "gate", "premium")
 
 # The base price is the cheapest regular (non-premium) tier sold in one of
 # these phases, so VIP prices and early-bird discounts never distort the
