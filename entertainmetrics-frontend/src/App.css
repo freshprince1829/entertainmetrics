@@ -2647,3 +2647,88 @@ td .pill {
     flex-wrap: wrap;
   }
 }
+
+/* ---------- Prediction ranges ---------- */
+.range-value {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.range-expected {
+  color: var(--text);
+}
+
+.range-span,
+.range-line {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.range-line {
+  margin: 2px 0 8px;
+}
+
+.range-bar {
+  position: relative;
+  height: 10px;
+  margin: 6px 0 4px;
+}
+
+.range-track {
+  position: absolute;
+  inset: 4px 0;
+  border-radius: 2px;
+}
+
+.range-band {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  opacity: 0.45;
+}
+
+.range-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+}
+
+.range-actual {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 6px;
+  margin-left: -3px;
+  border: 2px solid;
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.range-note {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.range-note summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.range-note p {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
+/* Grid columns may shrink so wide tables scroll inside their panel rather
+   than widening the page. */
+.content-grid > *,
+.charts-grid > *,
+.hero-grid > * {
+  min-width: 0;
+}

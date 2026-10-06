@@ -28,6 +28,9 @@ const STATUS_PILL = {
   "on track": "pill pill-high",
   ahead: "pill pill-high",
   behind: "pill pill-mid",
+  "within predicted range": "pill pill-high",
+  "above range": "pill pill-high",
+  "below range": "pill pill-mid",
 };
 
 const emptySnapshotForm = {
@@ -153,7 +156,11 @@ export function LiveEventCard({ event, showName = false }) {
       <div className="live-head">
         <span className="pill pill-live">LIVE - not final</span>
         {showName && <strong>{event.event_name}</strong>}
-        {data?.status && <span className={STATUS_PILL[data.status]}>{data.status}</span>}
+        {(data?.status_label ?? data?.status) && (
+          <span className={STATUS_PILL[data.status_label ?? data.status] ?? "pill pill-low"}>
+            {data.status_label ?? data.status}
+          </span>
+        )}
       </div>
       {loading ? (
         <p className="panel-subtext">Loading live numbers…</p>
@@ -176,7 +183,11 @@ export function LiveEventCard({ event, showName = false }) {
               <div>
                 <span>Predicted attendance</span>
                 <strong>{formatNumber(data.predicted_attendance)}</strong>
-                <small>latest forecast</small>
+                <small>
+                  {data.attendance_low != null
+                    ? `range ${formatNumber(data.attendance_low)} – ${formatNumber(data.attendance_high)}`
+                    : "latest forecast"}
+                </small>
               </div>
             </div>
           )}

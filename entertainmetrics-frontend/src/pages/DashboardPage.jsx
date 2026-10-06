@@ -16,6 +16,7 @@ import {
 import { useApiData } from "../api";
 import { DeltaBadge, PanelButton, TickGauge, TickMeter } from "../components/meters";
 import { EventDayPatternsCard, LiveEventCard } from "../components/SalesTracking";
+import { RangeValue } from "../components/PredictionRange";
 import { Icon, LoadingPanel, Notice } from "../components/ui";
 import {
   canRecordActuals,
@@ -756,6 +757,15 @@ function DashboardPage() {
                 value={comparison.mean_revenue_error_pct == null ? "—" : `${comparison.mean_revenue_error_pct}%`}
                 note="average absolute error"
               />
+              <KpiCell
+                label="Range coverage"
+                value={comparison.range_coverage_pct == null ? "—" : `${comparison.range_coverage_pct}%`}
+                note={
+                  comparison.events_with_range
+                    ? `Actual results fell inside the predicted range for ${comparison.events_in_range} of ${comparison.events_with_range} events`
+                    : "No compared events have a predicted range yet"
+                }
+              />
             </div>
             <div className="chart-box">
               <h3>Attendance</h3>
@@ -779,6 +789,7 @@ function DashboardPage() {
                   <th>Event</th>
                   <th>Forecast attendance</th>
                   <th>Actual attendance</th>
+                  <th>In range?</th>
                   <th>Attendance error</th>
                   <th>Revenue error</th>
                 </tr>
@@ -787,8 +798,24 @@ function DashboardPage() {
                 {comparisonItems.map((item) => (
                   <tr key={item.event_id}>
                     <td>{item.event_name}</td>
-                    <td>{formatNumber(item.predicted_attendance)}</td>
+                    <td className="nowrap">
+                      <RangeValue
+                        compact
+                        expected={item.predicted_attendance}
+                        low={item.attendance_low}
+                        high={item.attendance_high}
+                      />
+                    </td>
                     <td>{formatNumber(item.actual_attendance)}</td>
+                    <td>
+                      {item.attendance_in_range == null ? (
+                        <span className="event-sub">No range</span>
+                      ) : (
+                        <span className={item.attendance_in_range ? "pill pill-high" : "pill pill-low"}>
+                          {item.attendance_in_range ? "Inside range" : "Outside range"}
+                        </span>
+                      )}
+                    </td>
                     <td>{item.attendance_error_pct == null ? "—" : `${item.attendance_error_pct > 0 ? "+" : ""}${item.attendance_error_pct}%`}</td>
                     <td>{item.revenue_error_pct == null ? "—" : `${item.revenue_error_pct > 0 ? "+" : ""}${item.revenue_error_pct}%`}</td>
                   </tr>
@@ -929,8 +956,25 @@ function DashboardPage() {
                   {recentPredictions.map((prediction) => (
                     <tr key={prediction.id}>
                       <td>{eventNameById[prediction.event_id] ?? `Event ${prediction.event_id}`}</td>
-                      <td>{formatNumber(prediction.predicted_attendance)}</td>
-                      <td className="nowrap">{formatKes(prediction.predicted_revenue)}</td>
+                      <td>
+                        <RangeValue
+                          compact
+                          expected={prediction.predicted_attendance}
+                          low={prediction.attendance_low}
+                          high={prediction.attendance_high}
+                          note={prediction.range_note}
+                        />
+                      </td>
+                      <td>
+                        <RangeValue
+                          compact
+                          expected={prediction.predicted_revenue}
+                          low={prediction.revenue_low}
+                          high={prediction.revenue_high}
+                          money
+                          note={prediction.range_note}
+                        />
+                      </td>
                       <td>
                         <span className={confidencePillClass(prediction.confidence_score)}>
                           {prediction.confidence_score.toFixed(2)}

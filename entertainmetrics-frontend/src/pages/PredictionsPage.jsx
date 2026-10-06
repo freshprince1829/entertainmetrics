@@ -18,6 +18,7 @@ import {
   formatNumber,
 } from "../format";
 import { FORECAST } from "../theme";
+import { RangeBar, RangeNote, RangeValue } from "../components/PredictionRange";
 
 const INPUT_FIELDS = [
   { key: "ticket_price", label: "Ticket price (KES)", min: "0" },
@@ -27,6 +28,7 @@ const INPUT_FIELDS = [
 
 function ForecastResult({ prediction, event, capacity, fresh }) {
   const utilisation = capacity > 0 ? prediction.predicted_attendance / capacity : 0;
+  const hasRange = prediction.attendance_low != null;
 
   return (
     <div className="panel result-panel">
@@ -45,7 +47,22 @@ function ForecastResult({ prediction, event, capacity, fresh }) {
         <div>
           <h3>Predicted attendance</h3>
           <p className="metric">{formatNumber(prediction.predicted_attendance)}</p>
-          <ProgressBar value={prediction.predicted_attendance} max={capacity} color={FORECAST} />
+          {hasRange ? (
+            <>
+              <p className="range-line">
+                expected · range {formatNumber(prediction.attendance_low)} –{" "}
+                {formatNumber(prediction.attendance_high)}
+              </p>
+              <RangeBar
+                expected={prediction.predicted_attendance}
+                low={prediction.attendance_low}
+                high={prediction.attendance_high}
+                max={capacity}
+              />
+            </>
+          ) : (
+            <ProgressBar value={prediction.predicted_attendance} max={capacity} color={FORECAST} />
+          )}
           <p className="metric-note">
             {Math.round(utilisation * 100)}% of {formatNumber(capacity)} capacity
           </p>
@@ -53,7 +70,12 @@ function ForecastResult({ prediction, event, capacity, fresh }) {
         <div>
           <h3>Predicted revenue</h3>
           <p className="metric">{formatKes(prediction.predicted_revenue)}</p>
-          <p className="metric-note">attendance × ticket price</p>
+          {hasRange && (
+            <p className="range-line">
+              expected · range {formatKes(prediction.revenue_low)} – {formatNumber(prediction.revenue_high)}
+            </p>
+          )}
+          <p className="metric-note">attendance × effective ticket price</p>
         </div>
         <div className="ring-row compact">
           <ConfidenceRing score={prediction.confidence_score} size={76} />
@@ -70,6 +92,7 @@ function ForecastResult({ prediction, event, capacity, fresh }) {
           <p>{prediction.insight_summary}</p>
         </div>
       )}
+      <RangeNote note={prediction.range_note} />
 
       <div className="drawer-actions">
         <Link to={`/recommendations?event=${prediction.event_id}`} className="ghost-button">
@@ -305,8 +328,25 @@ function PredictionsPage() {
                         </div>
                         <div className="event-sub">{prediction.model_version || "-"}</div>
                       </td>
-                      <td>{formatNumber(prediction.predicted_attendance)}</td>
-                      <td className="nowrap">{formatKes(prediction.predicted_revenue)}</td>
+                      <td className="nowrap">
+                        <RangeValue
+                          compact
+                          expected={prediction.predicted_attendance}
+                          low={prediction.attendance_low}
+                          high={prediction.attendance_high}
+                          note={prediction.range_note}
+                        />
+                      </td>
+                      <td className="nowrap">
+                        <RangeValue
+                          compact
+                          expected={prediction.predicted_revenue}
+                          low={prediction.revenue_low}
+                          high={prediction.revenue_high}
+                          money
+                          note={prediction.range_note}
+                        />
+                      </td>
                       <td>
                         <span className={confidencePillClass(prediction.confidence_score)}>
                           {prediction.confidence_score.toFixed(2)}

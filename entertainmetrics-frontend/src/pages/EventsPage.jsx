@@ -14,6 +14,7 @@ import {
 } from "../components/ui";
 import { SalesTrackingSection } from "../components/SalesTracking";
 import { TicketTiersEditor } from "../components/TicketTiers";
+import { RangeValue } from "../components/PredictionRange";
 import {
   canRecordActuals,
   formatDate,
@@ -683,7 +684,13 @@ function EventsPage() {
                         </td>
                         <td>
                           {prediction ? (
-                            formatNumber(prediction.predicted_attendance)
+                            <RangeValue
+                              compact
+                              expected={prediction.predicted_attendance}
+                              low={prediction.attendance_low}
+                              high={prediction.attendance_high}
+                              note={prediction.range_note}
+                            />
                           ) : predictionsQuery.loading ? (
                             <span className="event-sub">Loading…</span>
                           ) : (
