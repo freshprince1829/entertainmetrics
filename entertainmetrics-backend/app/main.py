@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db
-from . import crud, models, pricing, sales, schemas
+from . import crud, models, pricing, ranges, sales, schemas
 
 Base.metadata.create_all(bind=engine)
 
@@ -683,7 +683,19 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
             "insight_summary": insight_summary,
         }
 
-        return crud.create_prediction(db, prediction_record)
+        band = ranges.compute_band(
+            expected_attendance=result["predicted_attendance"],
+            confidence=result["confidence_score"],
+            capacity=data.capacity,
+            event=event,
+            snapshots=snapshots,
+            today=date.today(),
+            effective_price=prices["effective_price"],
+            attendance_price=prices["attendance_price"],
+            price_high=prices["price_high"],
+        )
+
+        return crud.create_prediction(db, prediction_record, band=band)
     except HTTPException:
         raise
     except IntegrityError as error:

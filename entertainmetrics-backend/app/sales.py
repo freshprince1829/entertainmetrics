@@ -347,6 +347,17 @@ def compute_progress(
     }
 
 
+def range_position(value: float | None, low: float | None, high: float | None) -> str | None:
+    """Where a value sits relative to a prediction band, or None without one."""
+    if value is None or low is None or high is None:
+        return None
+    if value < low:
+        return "below range"
+    if value > high:
+        return "above range"
+    return "within predicted range"
+
+
 def live_status(percent_of_prediction: float | None) -> str | None:
     if percent_of_prediction is None:
         return None
@@ -388,6 +399,17 @@ def compute_live_vs_predicted(
             explanation += f" {attendance:,} people checked in ({attendance_pct}% of prediction)."
         explanation += " These are live numbers, not final actuals."
 
+    # Band-based status when the prediction has a range, else the +/-10% rule.
+    band = latest_prediction.band if latest_prediction else None
+    attendance_low = band.attendance_low if band else None
+    attendance_high = band.attendance_high if band else None
+    range_status = range_position(tickets, attendance_low, attendance_high)
+    if range_status is not None:
+        explanation += (
+            f" Against the predicted range of {attendance_low:,}-{attendance_high:,}, "
+            f"tickets sold so far are {range_status}."
+        )
+
     return {
         "event_id": event.id,
         "phase": event_phase(event.event_date, today),
@@ -402,6 +424,10 @@ def compute_live_vs_predicted(
         "tolerance_pct": LIVE_STATUS_TOLERANCE_PCT,
         "is_final": False,
         "explanation": explanation,
+        "attendance_low": attendance_low,
+        "attendance_high": attendance_high,
+        "range_status": range_status,
+        "status_label": range_status or status,
     }
 
 

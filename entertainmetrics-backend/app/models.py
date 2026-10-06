@@ -125,6 +125,34 @@ class Prediction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     event = relationship("Event", back_populates="predictions")
+    band = relationship(
+        "PredictionBand",
+        back_populates="prediction",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    # Optional range fields, read from the prediction's band (None for
+    # predictions made before ranges existed).
+    @property
+    def attendance_low(self):
+        return self.band.attendance_low if self.band else None
+
+    @property
+    def attendance_high(self):
+        return self.band.attendance_high if self.band else None
+
+    @property
+    def revenue_low(self):
+        return self.band.revenue_low if self.band else None
+
+    @property
+    def revenue_high(self):
+        return self.band.revenue_high if self.band else None
+
+    @property
+    def range_note(self):
+        return self.band.method_note if self.band else None
 
 
 class TicketSalesSnapshot(Base):
@@ -206,3 +234,26 @@ class SnapshotTierSales(Base):
     @property
     def tier_price(self) -> float:
         return self.tier.price
+
+
+class PredictionBand(Base):
+    """LOW / HIGH range for one prediction (rule-based heuristic band)."""
+
+    __tablename__ = "prediction_bands"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prediction_id = Column(
+        Integer,
+        ForeignKey("predictions.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    attendance_low = Column(Integer, nullable=False)
+    attendance_high = Column(Integer, nullable=False)
+    revenue_low = Column(Float, nullable=False)
+    revenue_high = Column(Float, nullable=False)
+    method_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    prediction = relationship("Prediction", back_populates="band")

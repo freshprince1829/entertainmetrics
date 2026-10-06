@@ -115,6 +115,12 @@ class PredictionResponse(BaseModel):
     model_version: str | None = None
     insight_summary: str | None = None
     created_at: datetime
+    # Optional prediction range (null for predictions made before ranges).
+    attendance_low: int | None = None
+    attendance_high: int | None = None
+    revenue_low: float | None = None
+    revenue_high: float | None = None
+    range_note: str | None = None
 
 class DashboardSummaryResponse(BaseModel):
     total_events: int
@@ -156,6 +162,12 @@ class RecentPredictionResponse(BaseModel):
     model_version: str | None = None
     insight_summary: str | None = None
     created_at: datetime
+    # Optional prediction range (null for predictions made before ranges).
+    attendance_low: int | None = None
+    attendance_high: int | None = None
+    revenue_low: float | None = None
+    revenue_high: float | None = None
+    range_note: str | None = None
 
 class ArtistRecommendationResponse(BaseModel):
     artist_id: int
@@ -193,6 +205,13 @@ class PredictedVsActualItem(BaseModel):
     predicted_revenue: float
     actual_revenue: float | None = None
     revenue_error_pct: float | None = None
+    # Optional range comparison (null when the prediction has no band).
+    attendance_low: int | None = None
+    attendance_high: int | None = None
+    revenue_low: float | None = None
+    revenue_high: float | None = None
+    attendance_in_range: bool | None = None
+    revenue_in_range: bool | None = None
 
 
 class AwaitingResultsItem(BaseModel):
@@ -209,6 +228,11 @@ class PredictedVsActualResponse(BaseModel):
     mean_revenue_error_pct: float | None = None
     items: list[PredictedVsActualItem]
     awaiting_results: list[AwaitingResultsItem] = []
+    # Optional: share of compared events (with a band) whose actual
+    # attendance fell inside the predicted range.
+    events_with_range: int = 0
+    events_in_range: int = 0
+    range_coverage_pct: float | None = None
 
 
 class TierSaleInput(BaseModel):
@@ -324,6 +348,11 @@ class LiveVsPredictedResponse(BaseModel):
     tolerance_pct: float
     is_final: bool
     explanation: str
+    # Optional: position of tickets sold so far within the prediction band.
+    attendance_low: int | None = None
+    attendance_high: int | None = None
+    range_status: str | None = None
+    status_label: str | None = None
 
 
 class EventDayPatternsResponse(BaseModel):
