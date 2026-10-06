@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
-from .database import Base, engine, get_db
-from . import crud, models, pricing, ranges, sales, schemas
+from .database import Base, engine, ensure_added_columns, get_db
+from . import crud, models, pricing, ranges, sales, sales_import, schemas, tier_analytics
 
 Base.metadata.create_all(bind=engine)
+ensure_added_columns(engine)
 
 app = FastAPI(title="EntertainMetrics API")
 
@@ -343,6 +344,113 @@ def get_revenue_breakdown(event_id: int, db: Session = Depends(get_db)):
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
 
+def _import_tier(event_id: int, spec: schemas.ImportTierSpec, sort_order: int, tier_id=None):
+    tier = models.TicketTier(
+        id=tier_id,
+        event_id=event_id,
+        name=(spec.name or spec.ticket_type).strip(),
+        price=spec.price,
+        quantity_available=spec.quantity_available,
+        sale_phase=spec.sale_phase,
+        access_level=spec.access_level,
+        audience=spec.audience,
+        partner_name=spec.partner_name,
+        sort_order=sort_order,
+    )
+    crud._apply_derived_tier_fields(tier)
+    return tier
+
+
+@app.post("/events/{event_id}/sales-import", response_model=schemas.SalesImportResponse)
+def import_sales_csv(
+    event_id: int,
+    request: schemas.SalesImportRequest,
+    dry_run: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Import cumulative ticket sales from CSV text. dry_run=true (default)
+    only previews. dry_run=false writes every snapshot (and any requested new
+    tiers) in one transaction, or nothing at all (422 with the errors)."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        next_order = max((t.sort_order or 0 for t in tiers), default=-1) + 1
+        created_names = []
+
+        if dry_run:
+            # New tiers exist only in memory, with placeholder negative ids.
+            def factory(spec):
+                created_names.append(spec.ticket_type)
+                return _import_tier(event_id, spec, next_order + len(created_names) - 1,
+                                    tier_id=-len(created_names))
+        else:
+            def factory(spec):
+                tier = _import_tier(event_id, spec, next_order + len(created_names))
+                db.add(tier)
+                db.flush()  # real id, rolled back if the import fails
+                created_names.append(tier.name)
+                return tier
+
+        result = sales_import.run_import(
+            event=event, existing_tiers=tiers, existing_snapshots=snapshots,
+            request=request, tier_factory=factory,
+        )
+        built = result.pop("_built")
+        if dry_run:
+            return {**result, "dry_run": True}
+        if not result["can_import"]:
+            db.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Nothing was imported. Fix these problems and try again.",
+                    "errors": result["errors"],
+                    "unmatched_types": result["unmatched_types"],
+                },
+            )
+        for snapshot in built:
+            db.add(snapshot)
+        db.commit()
+        return {
+            **result,
+            "dry_run": False,
+            "snapshots_created": len(built),
+            "tiers_created": created_names,
+        }
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/tier-analytics",
+    response_model=schemas.TierAnalyticsResponse,
+)
+def get_tier_analytics(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        return tier_analytics.compute_tier_analytics(event, tiers, snapshots)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/analytics/tier-patterns", response_model=schemas.TierPatternsResponse)
+def get_tier_patterns(db: Session = Depends(get_db)):
+    try:
+        events = crud.get_events_with_snapshots(db)
+        return tier_analytics.compute_cross_event_patterns(events, date.today())
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
 @app.get(
     "/events/{event_id}/live-vs-predicted",
     response_model=schemas.LiveVsPredictedResponse,
@@ -414,6 +522,12 @@ def _get_tier_or_404(db: Session, event_id: int, tier_id: int) -> models.TicketT
     return tier
 
 
+def _with_tier_warnings(db: Session, tier: models.TicketTier) -> models.TicketTier:
+    """Attach non-blocking duplicate-tag warnings for the response."""
+    tier.warnings = pricing.duplicate_tag_warnings(tier, crud.get_event_tiers(db, tier.event_id))
+    return tier
+
+
 def _handle_tier_integrity_error(db: Session, error: IntegrityError) -> None:
     error_message = str(getattr(error, "orig", error)).lower()
     if _constraint_name(error) == "uq_ticket_tier_event_name" or "unique" in error_message:
@@ -433,7 +547,7 @@ def create_ticket_tier(
 ):
     try:
         _get_event_or_404(db, event_id)
-        return crud.create_tier(db, event_id, tier)
+        return _with_tier_warnings(db, crud.create_tier(db, event_id, tier))
     except HTTPException:
         raise
     except IntegrityError as error:
@@ -471,6 +585,16 @@ def update_ticket_tier(
         for field in ("name", "price", "sale_phase", "sort_order"):
             if field in updates and updates[field] is None:
                 raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+        snapshot_count, _ = crud.tier_sales_summary(db, tier_id)
+        if "price" in updates and updates["price"] != tier.price and snapshot_count:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"The price of {tier.name} cannot change: it has recorded sales in "
+                    f"{snapshot_count} snapshot(s), which were valued at "
+                    f"KES {tier.price:,.0f}. Add a new tier for the new price instead."
+                ),
+            )
         new_quantity = updates.get("quantity_available")
         if new_quantity is not None:
             _, max_sold = crud.tier_sales_summary(db, tier_id)
@@ -482,7 +606,7 @@ def update_ticket_tier(
                         "tickets already recorded as sold for this tier"
                     ),
                 )
-        return crud.update_tier(db, tier, updates)
+        return _with_tier_warnings(db, crud.update_tier(db, tier, updates))
     except HTTPException:
         raise
     except IntegrityError as error:
@@ -509,6 +633,29 @@ def delete_ticket_tier(event_id: int, tier_id: int, db: Session = Depends(get_db
         return Response(status_code=204)
     except HTTPException:
         raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.post(
+    "/events/{event_id}/tiers/copy-from/{source_event_id}",
+    response_model=list[schemas.TicketTierResponse],
+    status_code=201,
+)
+def copy_ticket_tiers(event_id: int, source_event_id: int, db: Session = Depends(get_db)):
+    """Copy all tiers from another event as new tiers (no sales are copied, so
+    prices stay editable). Names the event already has are skipped."""
+    try:
+        _get_event_or_404(db, event_id)
+        if db.get(models.Event, source_event_id) is None:
+            raise HTTPException(status_code=404, detail="Source event not found")
+        source_tiers = crud.get_event_tiers(db, source_event_id)
+        existing = crud.get_event_tiers(db, event_id)
+        return crud.copy_tiers(db, event_id, source_tiers, existing)
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 

@@ -238,6 +238,14 @@ class PredictedVsActualResponse(BaseModel):
 class TierSaleInput(BaseModel):
     tier_id: int
     tickets_sold: int = Field(ge=0)
+    # Optional cumulative people scanned in for this tier.
+    checked_in: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def check_checked_in(self):
+        if self.checked_in is not None and self.checked_in > self.tickets_sold:
+            raise ValueError("checked_in cannot exceed tickets_sold for a tier")
+        return self
 
 
 class SalesSnapshotCreate(BaseModel):
@@ -280,6 +288,7 @@ class TierSaleResponse(BaseModel):
     tier_name: str
     tier_price: float
     tickets_sold: int
+    checked_in: int | None = None
 
 
 class SalesSnapshotResponse(BaseModel):
@@ -376,6 +385,8 @@ class FinalizeActualsResponse(FinalizePreview):
 # "premium" is for VIP / VVIP tiers; a tier is premium exactly when its
 # sale_phase is "premium" (is_premium in responses is derived from it).
 SalePhase = Literal["early_bird", "advance", "standard", "last_minute", "gate", "premium"]
+AccessLevel = Literal["general", "premium", "vip", "vvip", "all_access", "group"]
+Audience = Literal["public", "partner", "group", "complimentary"]
 
 
 class TicketTierCreate(BaseModel):
@@ -384,6 +395,9 @@ class TicketTierCreate(BaseModel):
     quantity_available: int | None = Field(default=None, ge=0)
     sale_phase: SalePhase = "standard"
     sort_order: int = 0
+    access_level: AccessLevel = "general"
+    audience: Audience = "public"
+    partner_name: str | None = Field(default=None, max_length=80)
 
     @field_validator("name")
     @classmethod
@@ -400,6 +414,9 @@ class TicketTierUpdate(BaseModel):
     quantity_available: int | None = Field(default=None, ge=0)
     sale_phase: SalePhase | None = None
     sort_order: int | None = None
+    access_level: AccessLevel | None = None
+    audience: Audience | None = None
+    partner_name: str | None = Field(default=None, max_length=80)
 
     @field_validator("name")
     @classmethod
@@ -424,6 +441,14 @@ class TicketTierResponse(BaseModel):
     is_premium: bool
     sort_order: int
     created_at: datetime | None = None
+    # Optional fields added with access levels / audiences.
+    access_level: str = "general"
+    audience: str = "public"
+    partner_name: str | None = None
+    price_multiplier: float | None = None
+    price_band: str | None = None
+    sales_snapshot_count: int = 0
+    warnings: list[str] = []
 
 
 class PriceRangeResponse(BaseModel):
@@ -463,3 +488,137 @@ class RevenueBreakdownResponse(BaseModel):
     base_price: float
     tiers: list[TierBreakdownItem]
     explanation: str
+
+
+class TierAnalyticsItem(BaseModel):
+    tier_id: int
+    name: str
+    price: float
+    sale_phase: str
+    access_level: str
+    audience: str
+    partner_name: str | None = None
+    price_band: str
+    is_premium: bool
+    quantity_available: int | None = None
+    tickets_sold: int
+    revenue: float
+    share_of_tickets_pct: float | None = None
+    share_of_revenue_pct: float | None = None
+    sell_through_pct: float | None = None
+    days_to_sell_out: float | None = None
+    realized_average_price: float | None = None
+    revenue_per_ticket: float | None = None
+    checked_in: int | None = None
+    show_rate_pct: float | None = None
+
+
+class TierGroupShare(BaseModel):
+    key: str
+    tickets: int
+    revenue: float
+    share_of_tickets_pct: float | None = None
+    share_of_revenue_pct: float | None = None
+
+
+class TierAnalyticsResponse(BaseModel):
+    event_id: int
+    has_tier_data: bool
+    message: str | None = None
+    snapshot_id: int | None = None
+    recorded_at: datetime | None = None
+    tickets_sold_total: int | None = None
+    revenue_total: float | None = None
+    realized_average_price: float | None = None
+    partner_discount_share_pct: float | None = None
+    partner_average_price: float | None = None
+    tiers: list[TierAnalyticsItem]
+    by_sale_phase: list[TierGroupShare]
+    by_access_level: list[TierGroupShare]
+    by_audience: list[TierGroupShare]
+    affordability_profile: list[TierGroupShare]
+    insights: list[str]
+    note: str
+
+
+class TierPatternGroup(BaseModel):
+    key: str
+    avg_share_of_tickets_pct: float
+    avg_share_of_revenue_pct: float
+    events_with_key: int
+
+
+class TierPatternsResponse(BaseModel):
+    events_used: int
+    min_events_required: int
+    sufficient_history: bool
+    by_access_level: list[TierPatternGroup]
+    by_sale_phase: list[TierPatternGroup]
+    by_audience: list[TierPatternGroup]
+    avg_early_bird_days_to_sell_out: float | None = None
+    early_bird_tiers_sold_out: int
+    explanation: str
+    note: str
+
+
+class ImportTierSpec(BaseModel):
+    """A tier to create for an unmatched ticket type during a CSV import."""
+    ticket_type: str = Field(min_length=1)
+    name: str | None = Field(default=None, max_length=80)
+    price: float = Field(ge=0)
+    quantity_available: int | None = Field(default=None, ge=0)
+    sale_phase: SalePhase = "standard"
+    access_level: AccessLevel = "general"
+    audience: Audience = "public"
+    partner_name: str | None = Field(default=None, max_length=80)
+
+
+class SalesImportRequest(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=1_000_000)
+    # Offset applied to date/times without a timezone (e.g. 180 for Nairobi).
+    utc_offset_minutes: int = Field(default=0, ge=-720, le=840)
+    # Unmatched ticket type -> existing tier id.
+    mappings: dict[str, int] = {}
+    create_tiers: list[ImportTierSpec] = []
+
+
+class ImportRow(BaseModel):
+    row_number: int
+    recorded_at: datetime | None = None
+    ticket_type: str
+    quantity: int | None = None
+    revenue: float | None = None
+    scanned_in: int | None = None
+    status: str
+    tier_id: int | None = None
+    tier_name: str | None = None
+    errors: list[str]
+
+
+class UnmatchedTicketType(BaseModel):
+    ticket_type: str
+    rows: int
+    suggested_access_level: str
+    suggested_sale_phase: str
+    suggested_audience: str
+    suggested_partner_name: str | None = None
+    suggested_price: float | None = None
+
+
+class ImportSnapshotPreview(BaseModel):
+    recorded_at: datetime
+    tickets_sold_total: int
+    gate_tickets_sold: int
+    revenue_to_date: float | None = None
+    attendance_checked_in: int | None = None
+
+
+class SalesImportResponse(BaseModel):
+    dry_run: bool
+    can_import: bool
+    rows: list[ImportRow]
+    unmatched_types: list[UnmatchedTicketType]
+    errors: list[str]
+    snapshots: list[ImportSnapshotPreview]
+    snapshots_created: int = 0
+    tiers_created: list[str] = []

@@ -14,3 +14,27 @@ export const PHASE_LABELS = {
 export function tierColor(index) {
   return index < TIER_COLORS.length ? TIER_COLORS[index] : TIER_OTHER;
 }
+
+export const ACCESS_LABELS = {
+  general: "General",
+  premium: "Premium",
+  vip: "VIP",
+  vvip: "VVIP",
+  all_access: "All Access",
+  group: "Group",
+};
+
+export const AUDIENCE_LABELS = {
+  public: "Public",
+  partner: "Partner / discount",
+  group: "Group",
+  complimentary: "Complimentary",
+};
+
+export const PRICE_BAND_LABELS = {
+  free: "Free",
+  discount: "Discount",
+  standard: "Standard",
+  premium: "Premium",
+  luxury: "Luxury",
+};

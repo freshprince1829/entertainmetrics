@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from . import models, ranges, schemas
+from . import models, pricing, ranges, schemas
 from .sales import as_utc
 
 
@@ -60,7 +60,11 @@ def create_sales_snapshot(
     db_snapshot = models.TicketSalesSnapshot(event_id=event_id, **data)
     for sale in snapshot.tier_sales or []:
         db_snapshot.tier_sales_rows.append(
-            models.SnapshotTierSales(tier_id=sale.tier_id, tickets_sold=sale.tickets_sold)
+            models.SnapshotTierSales(
+                tier_id=sale.tier_id,
+                tickets_sold=sale.tickets_sold,
+                checked_in=sale.checked_in,
+            )
         )
     db.add(db_snapshot)
     db.commit()
@@ -86,23 +90,59 @@ def get_event_tiers(db: Session, event_id: int):
     )
 
 
+def _apply_derived_tier_fields(tier: models.TicketTier) -> None:
+    # Premium status follows the sale phase and access level, and a partner
+    # name is only kept for partner tiers.
+    tier.is_premium = pricing.is_premium_tier(tier.sale_phase, tier.access_level or "general")
+    if tier.audience != "partner":
+        tier.partner_name = None
+    elif tier.partner_name:
+        tier.partner_name = tier.partner_name.strip() or None
+
+
 def create_tier(db: Session, event_id: int, tier: schemas.TicketTierCreate):
-    db_tier = models.TicketTier(
-        event_id=event_id,
-        **tier.model_dump(),
-        is_premium=tier.sale_phase == "premium",
-    )
+    db_tier = models.TicketTier(event_id=event_id, **tier.model_dump())
+    _apply_derived_tier_fields(db_tier)
     db.add(db_tier)
     db.commit()
     db.refresh(db_tier)
     return db_tier
 
 
+COPIED_TIER_FIELDS = (
+    "name", "price", "quantity_available", "sale_phase", "access_level",
+    "audience", "partner_name",
+)
+
+
+def copy_tiers(db: Session, event_id: int, source_tiers, existing_tiers):
+    """Copy tiers to an event, skipping names it already has (any case)."""
+    taken = {t.name.strip().lower() for t in existing_tiers}
+    next_order = max((t.sort_order or 0 for t in existing_tiers), default=-1) + 1
+    created = []
+    for source in source_tiers:
+        if source.name.strip().lower() in taken:
+            continue
+        tier = models.TicketTier(
+            event_id=event_id,
+            sort_order=next_order,
+            **{field: getattr(source, field) for field in COPIED_TIER_FIELDS},
+        )
+        _apply_derived_tier_fields(tier)
+        db.add(tier)
+        created.append(tier)
+        taken.add(source.name.strip().lower())
+        next_order += 1
+    db.commit()
+    for tier in created:
+        db.refresh(tier)
+    return created
+
+
 def update_tier(db: Session, tier: models.TicketTier, changes: dict):
     for field, value in changes.items():
         setattr(tier, field, value)
-    # Premium status always follows the sale phase.
-    tier.is_premium = tier.sale_phase == "premium"
+    _apply_derived_tier_fields(tier)
     db.commit()
     db.refresh(tier)
     return tier

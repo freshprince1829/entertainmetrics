@@ -389,7 +389,15 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
         }}
       />
 
-      <SalesTrackingSection event={event} tiers={tiers} onEventUpdated={onEventUpdated} />
+      <SalesTrackingSection
+        event={event}
+        tiers={tiers}
+        onEventUpdated={onEventUpdated}
+        onTiersChanged={() => {
+          tiersQuery.reload();
+          onEventUpdated();
+        }}
+      />
 
       <h2 className="drawer-heading">Lineup</h2>
       <p className="panel-subtext">

@@ -2732,3 +2732,349 @@ td .pill {
 .hero-grid > * {
   min-width: 0;
 }
+
+/* ---------- Tier analytics ---------- */
+.tier-analytics {
+  margin: 8px 0 18px;
+}
+
+.tier-analytics h4 {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.analytics-note {
+  font-size: 12px;
+  color: var(--dim);
+  margin: 4px 0 14px;
+  line-height: 1.5;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 24px;
+}
+
+.analytics-grid > * {
+  min-width: 0;
+}
+
+.sellout-list,
+.insight-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-bars {
+  margin-top: 10px;
+}
+
+.sellout-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sellout-list strong {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.insight-list li {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  padding-left: 14px;
+  position: relative;
+}
+
+.insight-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+/* ---------- Easier sales entry ---------- */
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stepper input {
+  flex: 1;
+  min-width: 70px;
+}
+
+.stepper-button {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.stepper-button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.stepper-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.stepper-change {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stepper-change.up::before {
+  content: "▲ ";
+  color: var(--positive);
+}
+
+.stepper-change.down::before {
+  content: "▼ ";
+  color: var(--negative);
+}
+
+.copy-tiers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 14px 0 6px;
+}
+
+.copy-tiers .field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.gate-launch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 4px;
+}
+
+.gate-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 20px clamp(16px, 3vw, 32px) 40px;
+}
+
+.gate-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.gate-head h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.gate-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.gate-unsaved {
+  color: var(--text);
+}
+
+.gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.gate-save {
+  min-height: 52px;
+  padding: 0 28px;
+  font-size: 16px;
+}
+
+.gate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.gate-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gate-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gate-tile-head h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 18px;
+}
+
+.gate-tile-head span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.gate-count {
+  margin: 4px 0 0;
+  font-family: var(--display);
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.gate-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gate-buttons {
+  display: grid;
+  grid-template-columns: 1fr 2fr 2fr;
+  gap: 10px;
+}
+
+.gate-button {
+  min-height: 64px;
+  border-radius: 12px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.gate-button:active:not(:disabled) {
+  background: var(--border-2);
+}
+
+.gate-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.gate-button.minor {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.gate-scans {
+  display: grid;
+  grid-template-columns: 1fr 64px 64px;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+/* ---------- CSV import ---------- */
+.sales-import {
+  margin-top: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.sales-import summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0 12px;
+}
+
+.file-button {
+  cursor: pointer;
+}
+
+.import-preview h4 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.import-unmatched-list,
+.import-errors {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.import-unmatched {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.import-unmatched-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.import-errors li {
+  font-size: 13px;
+  color: var(--negative);
+  line-height: 1.5;
+}

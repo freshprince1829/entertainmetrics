@@ -15,7 +15,11 @@ import { apiDelete, apiPost, useApiData } from "../api";
 import { canRecordActuals, formatDateTime, formatKes, formatNumber } from "../format";
 import { Field, Notice, StatCard } from "./ui";
 import { ACTUAL, CHECKED_IN, INK, INK_MUTED } from "../theme";
+import { localInputValue, withLocalOffset } from "../datetime";
 import { tierColor } from "../tiers";
+import { TierAnalyticsPanel } from "./TierAnalytics";
+import { GateMode, TierStepper } from "./SalesEntry";
+import { SalesImport } from "./SalesImport";
 
 // Chart surface, used for the 2px gaps between stacked segments.
 const SURFACE = "#141416";
@@ -41,26 +45,6 @@ const emptySnapshotForm = {
   revenue_to_date: "",
   notes: "",
 };
-
-function pad(value) {
-  return String(value).padStart(2, "0");
-}
-
-// Value for <input type="datetime-local"> in the browser's local time.
-function localInputValue(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours(),
-  )}:${pad(date.getMinutes())}`;
-}
-
-// "2026-12-17T19:30" -> "2026-12-17T19:30:00+03:00", keeping the local date
-// so the API validates against the venue's calendar day.
-function withLocalOffset(localValue) {
-  const offsetMinutes = -new Date(localValue).getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMinutes);
-  return `${localValue}:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
-}
 
 function eventDayStart(eventDate) {
   const [y, m, d] = String(eventDate).slice(0, 10).split("-").map(Number);
@@ -276,15 +260,19 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
   }
 
   const filledTiers = tiers.filter((tier) => tierValues[tier.id] !== "" && tierValues[tier.id] != null);
+  const previousValues = tierValuesFrom(tiers, latestTierSnapshot);
   const computed = filledTiers.reduce(
     (acc, tier) => {
       const sold = Number(tierValues[tier.id]) || 0;
+      const before = Number(previousValues[tier.id]) || 0;
       acc.total += sold;
       acc.revenue += sold * tier.price;
+      acc.change += sold - before;
+      acc.changeRevenue += (sold - before) * tier.price;
       if (tier.sale_phase === "gate") acc.gate += sold;
       return acc;
     },
-    { total: 0, gate: 0, revenue: 0 },
+    { total: 0, gate: 0, revenue: 0, change: 0, changeRevenue: 0 },
   );
 
   async function handleSubmit(e) {
@@ -337,13 +325,17 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
         </Field>
         {tierMode ? (
           tiers.map((tier, index) => (
-            <Field key={tier.id} label={`${tier.name} sold`}
+            <Field key={tier.id} wide label={`${tier.name} sold`}
               hint={`${formatKes(tier.price)}${tier.quantity_available != null ? ` · ${formatNumber(tier.quantity_available)} available` : ""}`}>
               <span className="tier-input">
                 <i className="tier-swatch" style={{ background: tierColor(index) }} aria-hidden="true" />
-                <input type="number" min="0" max={tier.quantity_available ?? undefined}
+                <TierStepper
+                  label={`${tier.name} sold`}
                   value={tierValues[tier.id] ?? ""}
-                  onChange={(e) => setTierValues((prev) => ({ ...prev, [tier.id]: e.target.value }))} />
+                  max={tier.quantity_available ?? undefined}
+                  previous={previousValues[tier.id] === "" ? null : Number(previousValues[tier.id])}
+                  onChange={(value) => setTierValues((prev) => ({ ...prev, [tier.id]: value }))}
+                />
               </span>
             </Field>
           ))
@@ -376,7 +368,13 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
       </div>
       {tierMode && (
         <p className="tier-totals" aria-live="polite">
-          Total <b>{formatNumber(computed.total)}</b> tickets · gate{" "}
+          {latestTierSnapshot && (
+            <>
+              Since the last snapshot: <b>{computed.change >= 0 ? "+" : ""}{formatNumber(computed.change)}</b>{" "}
+              tickets ({computed.changeRevenue >= 0 ? "+" : "−"}{formatKes(Math.abs(computed.changeRevenue))}).{" "}
+            </>
+          )}
+          New totals: <b>{formatNumber(computed.total)}</b> tickets · gate{" "}
           <b>{formatNumber(computed.gate)}</b> · revenue <b>{formatKes(computed.revenue)}</b>
           <span className="event-sub"> - calculated from the tiers. Leave a tier blank to skip it.</span>
         </p>
@@ -642,11 +640,12 @@ function CloseOutPanel({ event, preview, onFinalized }) {
   );
 }
 
-export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
+export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTiersChanged }) {
   const snapshotsQuery = useApiData(`/events/${event.id}/sales-snapshots`);
   const progressQuery = useApiData(`/events/${event.id}/sales-progress`);
   const [liveVersion, setLiveVersion] = useState(0);
   const [savedNotice, setSavedNotice] = useState("");
+  const [gateOpen, setGateOpen] = useState(false);
 
   const snapshots = snapshotsQuery.data ?? [];
   const progress = progressQuery.data;
@@ -697,7 +696,10 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
           <SalesChart snapshots={snapshots} progress={progress} eventDate={event.event_date} />
           <p className="live-note">{progress.explanation}</p>
           {tiers.length > 0 && (
-            <TierSalesCharts key={`${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} snapshots={snapshots} tiers={tiers} />
+            <>
+              <TierSalesCharts key={`${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} snapshots={snapshots} tiers={tiers} />
+              <TierAnalyticsPanel key={`analytics-${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} />
+            </>
           )}
           <SnapshotTable eventId={event.id} snapshots={snapshots} onDeleted={reloadSales} />
           {canRecordActuals(event.event_date) && progress.finalize_preview && (
@@ -711,6 +713,24 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
             />
           )}
         </>
+      )}
+
+      {tiers.length > 0 && (
+        <div className="gate-launch">
+          <button type="button" className="ghost-button" onClick={() => setGateOpen(true)}>
+            Open gate mode
+          </button>
+          <span className="event-sub">Full-screen tier counters for the door, with one Save count button.</span>
+        </div>
+      )}
+      {gateOpen && (
+        <GateMode
+          event={event}
+          tiers={tiers}
+          latestTierSnapshot={latestTierSnapshot}
+          onClose={() => setGateOpen(false)}
+          onSaved={reloadSales}
+        />
       )}
 
       <SnapshotForm
@@ -727,6 +747,15 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
       <Notice tone="success" onDismiss={() => setSavedNotice("")}>
         {savedNotice}
       </Notice>
+
+      <SalesImport
+        event={event}
+        tiers={tiers}
+        onImported={() => {
+          reloadSales();
+          onTiersChanged?.();
+        }}
+      />
     </section>
   );
 }

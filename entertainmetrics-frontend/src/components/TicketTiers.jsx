@@ -1,16 +1,22 @@
 import { useState } from "react";
 import { apiDelete, apiPatch, apiPost, useApiData } from "../api";
 import { formatKes, formatNumber } from "../format";
-import { PHASE_LABELS, tierColor } from "../tiers";
+import { ACCESS_LABELS, AUDIENCE_LABELS, PHASE_LABELS, tierColor } from "../tiers";
 import { Field, Notice } from "./ui";
 
+// Presets fill in everything except price and quantity.
+const PUBLIC = { audience: "public", partner_name: "" };
 const PRESETS = [
-  { name: "Early Bird", sale_phase: "early_bird" },
-  { name: "Advance", sale_phase: "advance" },
-  { name: "Last Minute", sale_phase: "last_minute" },
-  { name: "Gate", sale_phase: "gate" },
-  { name: "VIP", sale_phase: "premium" },
-  { name: "VVIP", sale_phase: "premium" },
+  { name: "Early Bird", sale_phase: "early_bird", access_level: "general", ...PUBLIC },
+  { name: "Advance", sale_phase: "advance", access_level: "general", ...PUBLIC },
+  { name: "Standard", sale_phase: "standard", access_level: "general", ...PUBLIC },
+  { name: "Last Minute", sale_phase: "last_minute", access_level: "general", ...PUBLIC },
+  { name: "Gate", sale_phase: "gate", access_level: "general", ...PUBLIC },
+  { name: "VIP", sale_phase: "premium", access_level: "vip", ...PUBLIC },
+  { name: "VVIP", sale_phase: "premium", access_level: "vvip", ...PUBLIC },
+  { name: "All Access", sale_phase: "premium", access_level: "all_access", ...PUBLIC },
+  { name: "Partner Discount", sale_phase: "advance", access_level: "general", audience: "partner", partner_name: "" },
+  { name: "Group", sale_phase: "advance", access_level: "group", audience: "group", partner_name: "" },
 ];
 
 const emptyTierForm = {
@@ -18,40 +24,86 @@ const emptyTierForm = {
   price: "",
   quantity_available: "",
   sale_phase: "standard",
+  access_level: "general",
+  audience: "public",
+  partner_name: "",
 };
 
-function tierPayload(form) {
-  return {
+function tierPayload(form, { includePrice = true } = {}) {
+  const payload = {
     name: form.name,
-    price: Number(form.price),
     quantity_available: form.quantity_available === "" ? null : Number(form.quantity_available),
     sale_phase: form.sale_phase,
+    access_level: form.access_level,
+    audience: form.audience,
+    partner_name: form.audience === "partner" ? form.partner_name || null : null,
   };
+  if (includePrice) payload.price = Number(form.price);
+  return payload;
 }
 
-function TierFields({ form, onChange }) {
+function LabelSelect({ name, value, labels, onChange }) {
+  return (
+    <select name={name} value={value} onChange={onChange}>
+      {Object.entries(labels).map(([key, label]) => (
+        <option key={key} value={key}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function TierFields({ form, onChange, priceLocked = false }) {
   return (
     <>
       <Field label="Tier name">
         <input name="name" value={form.name} onChange={onChange} required maxLength={80} />
       </Field>
-      <Field label="Price (KES)">
-        <input name="price" type="number" min="0" step="any" value={form.price} onChange={onChange} required />
+      <Field
+        label="Price (KES)"
+        hint={priceLocked ? "Locked: this tier has recorded sales. Add a new tier for a new price." : undefined}
+      >
+        <input name="price" type="number" min="0" step="any" value={form.price} onChange={onChange}
+          required disabled={priceLocked} />
       </Field>
       <Field label="Quantity" hint="Leave blank if unknown">
         <input name="quantity_available" type="number" min="0" value={form.quantity_available} onChange={onChange} />
       </Field>
       <Field label="Sale phase">
-        <select name="sale_phase" value={form.sale_phase} onChange={onChange}>
-          {Object.entries(PHASE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <LabelSelect name="sale_phase" value={form.sale_phase} labels={PHASE_LABELS} onChange={onChange} />
       </Field>
+      <Field label="Access level">
+        <LabelSelect name="access_level" value={form.access_level} labels={ACCESS_LABELS} onChange={onChange} />
+      </Field>
+      <Field label="Audience">
+        <LabelSelect name="audience" value={form.audience} labels={AUDIENCE_LABELS} onChange={onChange} />
+      </Field>
+      {form.audience === "partner" && (
+        <Field label="Partner name" hint="e.g. the bank behind a card-holder discount">
+          <input name="partner_name" value={form.partner_name} onChange={onChange} maxLength={80} />
+        </Field>
+      )}
     </>
   );
+}
+
+function tierTags(tier) {
+  return [
+    PHASE_LABELS[tier.sale_phase] ?? tier.sale_phase,
+    tier.access_level && tier.access_level !== "general" ? ACCESS_LABELS[tier.access_level] : null,
+    tier.audience === "partner"
+      ? `Partner${tier.partner_name ? `: ${tier.partner_name}` : ""}`
+      : tier.audience && tier.audience !== "public"
+        ? AUDIENCE_LABELS[tier.audience]
+        : null,
+  ].filter(Boolean);
+}
+
+function resultNotice(result, text) {
+  return result?.warnings?.length
+    ? { tone: "info", text: `${text} Note: ${result.warnings.join(" ")}` }
+    : { tone: "success", text };
 }
 
 function useFormState(initial) {
@@ -64,11 +116,15 @@ function useFormState(initial) {
 }
 
 function EditTierRow({ eventId, tier, onDone, onError }) {
+  const priceLocked = tier.sales_snapshot_count > 0;
   const [form, , onChange] = useFormState({
     name: tier.name,
     price: String(tier.price),
     quantity_available: tier.quantity_available ?? "",
     sale_phase: tier.sale_phase,
+    access_level: tier.access_level ?? "general",
+    audience: tier.audience ?? "public",
+    partner_name: tier.partner_name ?? "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -76,8 +132,11 @@ function EditTierRow({ eventId, tier, onDone, onError }) {
     e.preventDefault();
     setSaving(true);
     try {
-      await apiPatch(`/events/${eventId}/tiers/${tier.id}`, tierPayload(form));
-      onDone(`${form.name} updated.`);
+      const result = await apiPatch(
+        `/events/${eventId}/tiers/${tier.id}`,
+        tierPayload(form, { includePrice: !priceLocked }),
+      );
+      onDone(resultNotice(result, `${form.name} updated.`));
     } catch (err) {
       onError(err.message || "Failed to update tier");
       setSaving(false);
@@ -88,7 +147,7 @@ function EditTierRow({ eventId, tier, onDone, onError }) {
     <li className="tier-edit">
       <form onSubmit={handleSave}>
         <div className="form-grid">
-          <TierFields form={form} onChange={onChange} />
+          <TierFields form={form} onChange={onChange} priceLocked={priceLocked} />
         </div>
         <div className="modal-actions">
           <button type="button" className="ghost-button" onClick={() => onDone(null)}>
@@ -103,6 +162,50 @@ function EditTierRow({ eventId, tier, onDone, onError }) {
   );
 }
 
+function CopyTiersControl({ event, tiers, onCopied, onError }) {
+  const eventsQuery = useApiData("/events");
+  const [sourceId, setSourceId] = useState("");
+  const [copying, setCopying] = useState(false);
+  const sources = (eventsQuery.data ?? []).filter((e) => e.id !== event.id && e.tier_count > 0);
+  if (sources.length === 0) return null;
+
+  async function handleCopy() {
+    setCopying(true);
+    const source = sources.find((e) => String(e.id) === sourceId);
+    try {
+      const created = await apiPost(`/events/${event.id}/tiers/copy-from/${sourceId}`, {});
+      const skipped = source.tier_count - created.length;
+      onCopied(
+        `Copied ${created.length} tier${created.length === 1 ? "" : "s"} from ${source.event_name}` +
+          (skipped > 0 ? ` (${skipped} skipped: name already used).` : "."),
+      );
+      setSourceId("");
+    } catch (err) {
+      onError(err.message || "Failed to copy tiers");
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  return (
+    <div className="copy-tiers">
+      <Field label={tiers.length ? "Copy tiers from another event" : "Start from another event's tiers"}>
+        <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+          <option value="">Choose an event</option>
+          {sources.map((source) => (
+            <option key={source.id} value={source.id}>
+              {source.event_name} ({source.tier_count} tiers)
+            </option>
+          ))}
+        </select>
+      </Field>
+      <button type="button" className="ghost-button" onClick={handleCopy} disabled={!sourceId || copying}>
+        {copying ? "Copying…" : "Copy tiers"}
+      </button>
+    </div>
+  );
+}
+
 export function TicketTiersEditor({ event, tiers, onChanged }) {
   const priceRangeQuery = useApiData(`/events/${event.id}/price-range`);
   const [form, setForm, onChange] = useFormState(emptyTierForm);
@@ -111,8 +214,8 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
   const [editingId, setEditingId] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
-  function changed(text) {
-    if (text) setNotice({ tone: "success", text });
+  function changed(message) {
+    if (message) setNotice(typeof message === "string" ? { tone: "success", text: message } : message);
     priceRangeQuery.reload();
     onChanged();
   }
@@ -127,7 +230,7 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
         sort_order: tiers.length,
       });
       setForm(emptyTierForm);
-      changed(`${created.name} added.`);
+      changed(resultNotice(created, `${created.name} added.`));
     } catch (err) {
       setNotice({ tone: "error", text: err.message || "Failed to add tier" });
     } finally {
@@ -207,7 +310,7 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
                 <div className="tier-main">
                   <div className="event-title">{tier.name}</div>
                   <div className="event-sub">
-                    {PHASE_LABELS[tier.sale_phase] ?? tier.sale_phase} ·{" "}
+                    {tierTags(tier).join(" · ")} ·{" "}
                     {tier.quantity_available == null
                       ? "quantity unknown"
                       : `${formatNumber(tier.quantity_available)} available`}
@@ -242,6 +345,13 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
       <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
         {notice?.text}
       </Notice>
+
+      <CopyTiersControl
+        event={event}
+        tiers={tiers}
+        onCopied={(text) => changed(text)}
+        onError={(text) => setNotice({ tone: "error", text })}
+      />
 
       <form className="lineup-form" onSubmit={handleAdd}>
         <div className="form-section">Add a tier</div>

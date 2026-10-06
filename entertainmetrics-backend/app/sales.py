@@ -162,6 +162,27 @@ def resolve_tier_sales(
                 f"snapshot ({_tier_row(after[0], tier.id).tickets_sold}); per-tier "
                 "sales are cumulative and cannot decrease",
             )
+        if sale.checked_in is not None:
+            previous_in = [
+                _tier_row(s, tier.id).checked_in for s in before
+                if _tier_row(s, tier.id).checked_in is not None
+            ]
+            next_in = [
+                _tier_row(s, tier.id).checked_in for s in after
+                if _tier_row(s, tier.id).checked_in is not None
+            ]
+            if previous_in and sale.checked_in < previous_in[-1]:
+                raise SnapshotRejected(
+                    400,
+                    f"{tier.name}: {sale.checked_in} checked in is lower than the previous "
+                    f"snapshot ({previous_in[-1]}); check-ins are cumulative",
+                )
+            if next_in and sale.checked_in > next_in[0]:
+                raise SnapshotRejected(
+                    400,
+                    f"{tier.name}: {sale.checked_in} checked in is higher than the next "
+                    f"snapshot ({next_in[0]}); check-ins are cumulative",
+                )
         total += sale.tickets_sold
         if tier.sale_phase == "gate":
             gate += sale.tickets_sold
@@ -188,18 +209,27 @@ def resolve_tier_sales(
             + "). Omit the totals and they will be computed from the tiers.",
         )
 
-    if snapshot.attendance_checked_in is not None and snapshot.attendance_checked_in > total:
+    # Per-tier check-ins, when recorded, define the snapshot's attendance.
+    update = {"tickets_sold_total": total, "gate_tickets_sold": gate, "revenue_to_date": revenue}
+    tier_check_ins = [s.checked_in for s in snapshot.tier_sales if s.checked_in is not None]
+    if tier_check_ins:
+        checked_in_total = sum(tier_check_ins)
+        if (
+            snapshot.attendance_checked_in is not None
+            and snapshot.attendance_checked_in != checked_in_total
+        ):
+            raise SnapshotRejected(
+                422,
+                f"attendance_checked_in ({snapshot.attendance_checked_in}) disagrees with the "
+                f"sum of per-tier checked_in ({checked_in_total}); omit it to use the sum",
+            )
+        update["attendance_checked_in"] = checked_in_total
+    elif snapshot.attendance_checked_in is not None and snapshot.attendance_checked_in > total:
         raise SnapshotRejected(
             422, f"attendance_checked_in cannot exceed tickets sold across tiers ({total})"
         )
 
-    return snapshot.model_copy(
-        update={
-            "tickets_sold_total": total,
-            "gate_tickets_sold": gate,
-            "revenue_to_date": revenue,
-        }
-    )
+    return snapshot.model_copy(update=update)
 
 
 def pct(part, whole) -> float | None:
