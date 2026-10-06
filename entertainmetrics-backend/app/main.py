@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, get_db
-from . import crud, models, sales, schemas
+from . import crud, models, pricing, ranges, sales, schemas
 
 Base.metadata.create_all(bind=engine)
 
@@ -265,6 +265,14 @@ def create_sales_snapshot(
     try:
         event = _get_event_or_404(db, event_id)
         existing = crud.get_sales_snapshots(db, event_id)
+        if snapshot.tier_sales is not None:
+            tiers_by_id = {t.id: t for t in crud.get_event_tiers(db, event_id)}
+            try:
+                snapshot = sales.resolve_tier_sales(snapshot, tiers_by_id, existing)
+            except sales.SnapshotRejected as rejection:
+                raise HTTPException(
+                    status_code=rejection.status_code, detail=rejection.message
+                ) from rejection
         error_message = sales.validate_new_snapshot(event, existing, snapshot)
         if error_message:
             raise HTTPException(status_code=400, detail=error_message)
@@ -320,6 +328,22 @@ def get_sales_progress(event_id: int, db: Session = Depends(get_db)):
 
 
 @app.get(
+    "/events/{event_id}/revenue-breakdown",
+    response_model=schemas.RevenueBreakdownResponse,
+)
+def get_revenue_breakdown(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        return pricing.compute_revenue_breakdown(event, tiers, snapshots)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
     "/events/{event_id}/live-vs-predicted",
     response_model=schemas.LiveVsPredictedResponse,
 )
@@ -344,7 +368,10 @@ def get_live_vs_predicted(event_id: int, db: Session = Depends(get_db)):
 def get_event_day_patterns(db: Session = Depends(get_db)):
     try:
         events = crud.get_events_with_snapshots(db)
-        return sales.compute_event_day_patterns(events, date.today())
+        return {
+            **sales.compute_event_day_patterns(events, date.today()),
+            **pricing.compute_tier_patterns(events, date.today()),
+        }
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
@@ -374,6 +401,130 @@ def finalize_actuals(event_id: int, db: Session = Depends(get_db)):
             db, event, preview["actual_attendance"], preview["revenue"]
         )
         return {"event_id": event.id, **preview}
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+def _get_tier_or_404(db: Session, event_id: int, tier_id: int) -> models.TicketTier:
+    tier = db.get(models.TicketTier, tier_id)
+    if tier is None or tier.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Ticket tier not found")
+    return tier
+
+
+def _handle_tier_integrity_error(db: Session, error: IntegrityError) -> None:
+    error_message = str(getattr(error, "orig", error)).lower()
+    if _constraint_name(error) == "uq_ticket_tier_event_name" or "unique" in error_message:
+        _rollback_and_raise(
+            db, 409, "A ticket tier with this name already exists for this event", error
+        )
+    _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.post(
+    "/events/{event_id}/tiers",
+    response_model=schemas.TicketTierResponse,
+    status_code=201,
+)
+def create_ticket_tier(
+    event_id: int, tier: schemas.TicketTierCreate, db: Session = Depends(get_db)
+):
+    try:
+        _get_event_or_404(db, event_id)
+        return crud.create_tier(db, event_id, tier)
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/events/{event_id}/tiers", response_model=list[schemas.TicketTierResponse])
+def list_ticket_tiers(event_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        return crud.get_event_tiers(db, event_id)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.patch(
+    "/events/{event_id}/tiers/{tier_id}",
+    response_model=schemas.TicketTierResponse,
+)
+def update_ticket_tier(
+    event_id: int,
+    tier_id: int,
+    changes: schemas.TicketTierUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        _get_event_or_404(db, event_id)
+        tier = _get_tier_or_404(db, event_id, tier_id)
+        updates = changes.model_dump(exclude_unset=True)
+        # name, price, sale_phase, is_premium and sort_order cannot be null.
+        for field in ("name", "price", "sale_phase", "is_premium", "sort_order"):
+            if field in updates and updates[field] is None:
+                raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+        new_quantity = updates.get("quantity_available")
+        if new_quantity is not None:
+            _, max_sold = crud.tier_sales_summary(db, tier_id)
+            if new_quantity < max_sold:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"quantity_available ({new_quantity}) is below the {max_sold} "
+                        "tickets already recorded as sold for this tier"
+                    ),
+                )
+        return crud.update_tier(db, tier, updates)
+    except HTTPException:
+        raise
+    except IntegrityError as error:
+        _handle_tier_integrity_error(db, error)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/events/{event_id}/tiers/{tier_id}", status_code=204)
+def delete_ticket_tier(event_id: int, tier_id: int, db: Session = Depends(get_db)):
+    try:
+        _get_event_or_404(db, event_id)
+        tier = _get_tier_or_404(db, event_id, tier_id)
+        snapshot_count, _ = crud.tier_sales_summary(db, tier_id)
+        if snapshot_count:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"This tier has recorded sales in {snapshot_count} snapshot(s) and "
+                    "cannot be deleted; delete those snapshots first"
+                ),
+            )
+        crud.delete_tier(db, tier)
+        return Response(status_code=204)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/events/{event_id}/price-range", response_model=schemas.PriceRangeResponse)
+def get_price_range(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        base, source = pricing.base_price(event, tiers)
+        return {
+            "event_id": event_id,
+            **pricing.price_range(tiers),
+            "base_price": base,
+            "base_price_source": source,
+        }
     except HTTPException:
         raise
     except SQLAlchemyError as error:
@@ -464,8 +615,12 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
             raise HTTPException(status_code=404, detail="Event not found")
 
         linked_artists = _get_linked_artists(event)
+        snapshots = crud.get_sales_snapshots(db, event.id)
+        prices = pricing.prediction_prices(
+            event, crud.get_event_tiers(db, event.id), snapshots, data.ticket_price
+        )
         result = _run_prediction_math(
-            ticket_price=data.ticket_price,
+            ticket_price=prices["attendance_price"],
             marketing_spend=data.marketing_spend,
             capacity=data.capacity,
             linked_artists=linked_artists,
@@ -473,7 +628,6 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
 
         model_version = "v1-rule-based"
         sales_signal = None
-        snapshots = crud.get_sales_snapshots(db, event.id)
         if len(snapshots) >= sales.MIN_SNAPSHOTS_FOR_SALES_SIGNAL:
             patterns = sales.compute_event_day_patterns(
                 crud.get_events_with_snapshots(db), date.today(), exclude_event_id=event.id
@@ -490,10 +644,18 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
         if sales_signal is not None:
             model_version = "v1-rule-based+sales"
             result["predicted_attendance"] = sales_signal["predicted_attendance"]
-            result["predicted_revenue"] = round(
-                sales_signal["predicted_attendance"] * data.ticket_price, 2
-            )
             result["confidence_score"] = sales_signal["confidence_score"]
+        if sales_signal is not None or prices["uses_tiers"]:
+            # Revenue always follows the final attendance and effective price.
+            result["predicted_revenue"] = round(
+                result["predicted_attendance"] * prices["effective_price"], 2
+            )
+        if prices["uses_tiers"]:
+            model_version += "+tiers"
+            result["confidence_score"] = round(
+                max(0.3, min(result["confidence_score"] + prices["confidence_boost"], 0.95)),
+                2,
+            )
 
         if result["linked_artist_count"] > 0:
             insight_summary = (
@@ -509,6 +671,8 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
             )
         if sales_signal is not None:
             insight_summary += " " + sales_signal["insight"]
+        if prices["note"]:
+            insight_summary += " " + prices["note"]
 
         prediction_record = {
             "event_id": data.event_id,
@@ -519,7 +683,19 @@ def predict_event(data: schemas.PredictionRequest, db: Session = Depends(get_db)
             "insight_summary": insight_summary,
         }
 
-        return crud.create_prediction(db, prediction_record)
+        band = ranges.compute_band(
+            expected_attendance=result["predicted_attendance"],
+            confidence=result["confidence_score"],
+            capacity=data.capacity,
+            event=event,
+            snapshots=snapshots,
+            today=date.today(),
+            effective_price=prices["effective_price"],
+            attendance_price=prices["attendance_price"],
+            price_high=prices["price_high"],
+        )
+
+        return crud.create_prediction(db, prediction_record, band=band)
     except HTTPException:
         raise
     except IntegrityError as error:

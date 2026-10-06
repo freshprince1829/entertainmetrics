@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
-from . import models, schemas
+from . import models, ranges, schemas
 from .sales import as_utc
 
 
@@ -18,6 +18,7 @@ def create_event(db: Session, event: schemas.EventCreate):
 def get_events(db: Session):
     return (
         db.query(models.Event)
+        .options(selectinload(models.Event.tiers))
         .order_by(models.Event.event_date.desc(), models.Event.id.desc())
         .all()
     )
@@ -36,6 +37,11 @@ def update_event_actuals(
 def get_sales_snapshots(db: Session, event_id: int):
     return (
         db.query(models.TicketSalesSnapshot)
+        .options(
+            selectinload(models.TicketSalesSnapshot.tier_sales_rows).selectinload(
+                models.SnapshotTierSales.tier
+            )
+        )
         .filter(models.TicketSalesSnapshot.event_id == event_id)
         .order_by(
             models.TicketSalesSnapshot.recorded_at.asc(),
@@ -48,10 +54,14 @@ def get_sales_snapshots(db: Session, event_id: int):
 def create_sales_snapshot(
     db: Session, event_id: int, snapshot: schemas.SalesSnapshotCreate
 ):
-    data = snapshot.model_dump()
+    data = snapshot.model_dump(exclude={"tier_sales"})
     # Store in UTC so ordering is correct whatever offset the client sent.
     data["recorded_at"] = as_utc(data["recorded_at"])
     db_snapshot = models.TicketSalesSnapshot(event_id=event_id, **data)
+    for sale in snapshot.tier_sales or []:
+        db_snapshot.tier_sales_rows.append(
+            models.SnapshotTierSales(tier_id=sale.tier_id, tickets_sold=sale.tickets_sold)
+        )
     db.add(db_snapshot)
     db.commit()
     db.refresh(db_snapshot)
@@ -63,11 +73,62 @@ def delete_sales_snapshot(db: Session, snapshot: models.TicketSalesSnapshot):
     db.commit()
 
 
+def get_event_tiers(db: Session, event_id: int):
+    return (
+        db.query(models.TicketTier)
+        .filter(models.TicketTier.event_id == event_id)
+        .order_by(
+            models.TicketTier.sort_order.asc(),
+            models.TicketTier.price.asc(),
+            models.TicketTier.id.asc(),
+        )
+        .all()
+    )
+
+
+def create_tier(db: Session, event_id: int, tier: schemas.TicketTierCreate):
+    db_tier = models.TicketTier(event_id=event_id, **tier.model_dump())
+    db.add(db_tier)
+    db.commit()
+    db.refresh(db_tier)
+    return db_tier
+
+
+def update_tier(db: Session, tier: models.TicketTier, changes: dict):
+    for field, value in changes.items():
+        setattr(tier, field, value)
+    db.commit()
+    db.refresh(tier)
+    return tier
+
+
+def delete_tier(db: Session, tier: models.TicketTier):
+    db.delete(tier)
+    db.commit()
+
+
+def tier_sales_summary(db: Session, tier_id: int) -> tuple[int, int]:
+    """(number of snapshots recording this tier, highest tickets_sold recorded)."""
+    row = (
+        db.query(
+            func.count(models.SnapshotTierSales.id),
+            func.coalesce(func.max(models.SnapshotTierSales.tickets_sold), 0),
+        )
+        .filter(models.SnapshotTierSales.tier_id == tier_id)
+        .one()
+    )
+    return row[0], row[1]
+
+
 def get_events_with_snapshots(db: Session):
     return (
         db.query(models.Event)
         .join(models.TicketSalesSnapshot)
-        .options(selectinload(models.Event.sales_snapshots))
+        .options(
+            selectinload(models.Event.sales_snapshots)
+            .selectinload(models.TicketSalesSnapshot.tier_sales_rows)
+            .selectinload(models.SnapshotTierSales.tier)
+        )
         .distinct()
         .all()
     )
@@ -133,12 +194,16 @@ def get_event_lineup(db: Session, event_id: int):
 def create_prediction(
     db: Session,
     prediction_data: Mapping[str, object] | None = None,
+    band: Mapping[str, object] | None = None,
     **kwargs,
 ):
     payload = dict(prediction_data or {})
     payload.update(kwargs)
 
     db_prediction = models.Prediction(**payload)
+    if band is not None:
+        # Saved in the same transaction as the prediction.
+        db_prediction.band = models.PredictionBand(**band)
     db.add(db_prediction)
     db.commit()
     db.refresh(db_prediction)
@@ -146,7 +211,12 @@ def create_prediction(
 
 
 def get_predictions(db: Session):
-    return db.query(models.Prediction).order_by(models.Prediction.id.desc()).all()
+    return (
+        db.query(models.Prediction)
+        .options(selectinload(models.Prediction.band))
+        .order_by(models.Prediction.id.desc())
+        .all()
+    )
 
 
 def get_dashboard_summary(db: Session):
@@ -181,6 +251,7 @@ def get_dashboard_summary(db: Session):
 def get_recent_events(db: Session, limit: int = 5):
     return (
         db.query(models.Event)
+        .options(selectinload(models.Event.tiers))
         .order_by(models.Event.created_at.desc(), models.Event.id.desc())
         .limit(limit)
         .all()
@@ -190,6 +261,7 @@ def get_recent_events(db: Session, limit: int = 5):
 def get_recent_predictions(db: Session, limit: int = 5):
     return (
         db.query(models.Prediction)
+        .options(selectinload(models.Prediction.band))
         .order_by(models.Prediction.created_at.desc(), models.Prediction.id.desc())
         .limit(limit)
         .all()
@@ -253,8 +325,21 @@ def get_predicted_vs_actual(db: Session):
                 "revenue_error_pct": _percent_error(
                     latest.predicted_revenue, event.revenue
                 ),
+                "attendance_low": latest.attendance_low,
+                "attendance_high": latest.attendance_high,
+                "revenue_low": latest.revenue_low,
+                "revenue_high": latest.revenue_high,
+                "attendance_in_range": ranges.in_range(
+                    event.actual_attendance, latest.attendance_low, latest.attendance_high
+                ),
+                "revenue_in_range": ranges.in_range(
+                    event.revenue, latest.revenue_low, latest.revenue_high
+                ),
             }
         )
+
+    with_range = [i for i in items if i["attendance_in_range"] is not None]
+    in_range_count = sum(1 for i in with_range if i["attendance_in_range"])
 
     def mean_abs(key: str) -> float | None:
         values = [abs(i[key]) for i in items if i[key] is not None]
@@ -266,4 +351,10 @@ def get_predicted_vs_actual(db: Session):
         "mean_revenue_error_pct": mean_abs("revenue_error_pct"),
         "items": items,
         "awaiting_results": awaiting_results,
+        # Finalized actuals only: live snapshot numbers never reach this.
+        "events_with_range": len(with_range),
+        "events_in_range": in_range_count,
+        "range_coverage_pct": (
+            round(in_range_count / len(with_range) * 100, 1) if with_range else None
+        ),
     }

@@ -18,3 +18,11 @@ export const GRID = "#1F1F22";
 // Status colours: only for up/down deltas, always paired with an arrow icon.
 export const POSITIVE = "#4ADE80";
 export const NEGATIVE = "#F87171";
+
+// Ticket tiers (categorical, fixed order by tier sort order, never cycled).
+// Dark steps of the dataviz reference palette, magenta left out because it
+// already means CHECKED_IN. Validated on #141416: lightness, chroma, CVD
+// (worst adjacent ΔE 8.4), normal-vision (19.8) and 3:1 contrast all pass.
+// More than six tiers fold into "Other" (TIER_OTHER).
+export const TIER_COLORS = ["#3987E5", "#D95926", "#199E70", "#C98500", "#9085E9", "#E66767"];
+export const TIER_OTHER = INK_MUTED;

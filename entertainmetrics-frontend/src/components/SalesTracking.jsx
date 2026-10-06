@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -12,13 +14,23 @@ import {
 import { apiDelete, apiPost, useApiData } from "../api";
 import { canRecordActuals, formatDateTime, formatKes, formatNumber } from "../format";
 import { Field, Notice, StatCard } from "./ui";
-import { ACTUAL, CHECKED_IN, INK_MUTED } from "../theme";
+import { ACTUAL, CHECKED_IN, INK, INK_MUTED } from "../theme";
+import { tierColor } from "../tiers";
+
+// Chart surface, used for the 2px gaps between stacked segments.
+const SURFACE = "#141416";
+const MAX_TIER_SERIES = 6;
+// Share bars use 70% of the row at 100%, leaving room for the label.
+const SHARE_BAR_SCALE = 0.7;
 
 
 const STATUS_PILL = {
   "on track": "pill pill-high",
   ahead: "pill pill-high",
   behind: "pill pill-mid",
+  "within predicted range": "pill pill-high",
+  "above range": "pill pill-high",
+  "below range": "pill pill-mid",
 };
 
 const emptySnapshotForm = {
@@ -56,7 +68,7 @@ function eventDayStart(eventDate) {
 }
 
 function formatPct(value) {
-  return value === null || value === undefined ? "-" : `${value}%`;
+  return value === null || value === undefined ? "-" : `${Number(value).toFixed(1)}%`;
 }
 
 function chartDate(ms) {
@@ -144,7 +156,11 @@ export function LiveEventCard({ event, showName = false }) {
       <div className="live-head">
         <span className="pill pill-live">LIVE - not final</span>
         {showName && <strong>{event.event_name}</strong>}
-        {data?.status && <span className={STATUS_PILL[data.status]}>{data.status}</span>}
+        {(data?.status_label ?? data?.status) && (
+          <span className={STATUS_PILL[data.status_label ?? data.status] ?? "pill pill-low"}>
+            {data.status_label ?? data.status}
+          </span>
+        )}
       </div>
       {loading ? (
         <p className="panel-subtext">Loading live numbers…</p>
@@ -167,7 +183,11 @@ export function LiveEventCard({ event, showName = false }) {
               <div>
                 <span>Predicted attendance</span>
                 <strong>{formatNumber(data.predicted_attendance)}</strong>
-                <small>latest forecast</small>
+                <small>
+                  {data.attendance_low != null
+                    ? `range ${formatNumber(data.attendance_low)} – ${formatNumber(data.attendance_high)}`
+                    : "latest forecast"}
+                </small>
               </div>
             </div>
           )}
@@ -217,8 +237,23 @@ export function EventDayPatternsCard() {
   );
 }
 
-function SnapshotForm({ eventId, latest, onSaved }) {
+function tierValuesFrom(tiers, snapshot) {
+  const sold = {};
+  (snapshot?.tier_sales ?? []).forEach((row) => {
+    sold[row.tier_id] = row.tickets_sold;
+  });
+  const values = {};
+  tiers.forEach((tier) => {
+    values[tier.id] = sold[tier.id] ?? "";
+  });
+  return values;
+}
+
+function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
+  const tierMode = tiers.length > 0;
   const [formData, setFormData] = useState(emptySnapshotForm);
+  // Tier counts are cumulative, so the form starts from the last recorded ones.
+  const [tierValues, setTierValues] = useState(() => tierValuesFrom(tiers, latestTierSnapshot));
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState(null);
 
@@ -237,7 +272,20 @@ function SnapshotForm({ eventId, latest, onSaved }) {
       revenue_to_date: latest?.revenue_to_date ?? "",
       notes: "Event-day count",
     });
+    if (tierMode) setTierValues(tierValuesFrom(tiers, latestTierSnapshot));
   }
+
+  const filledTiers = tiers.filter((tier) => tierValues[tier.id] !== "" && tierValues[tier.id] != null);
+  const computed = filledTiers.reduce(
+    (acc, tier) => {
+      const sold = Number(tierValues[tier.id]) || 0;
+      acc.total += sold;
+      acc.revenue += sold * tier.price;
+      if (tier.sale_phase === "gate") acc.gate += sold;
+      return acc;
+    },
+    { total: 0, gate: 0, revenue: 0 },
+  );
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -245,19 +293,30 @@ function SnapshotForm({ eventId, latest, onSaved }) {
     setNotice(null);
 
     const optionalNumber = (value) => (value === "" ? null : Number(value));
-    const payload = {
-      recorded_at: withLocalOffset(formData.recorded_at),
-      tickets_sold_total: Number(formData.tickets_sold_total),
-      gate_tickets_sold: formData.gate_tickets_sold === "" ? 0 : Number(formData.gate_tickets_sold),
-      attendance_checked_in: optionalNumber(formData.attendance_checked_in),
-      revenue_to_date: optionalNumber(formData.revenue_to_date),
-      notes: formData.notes || null,
-    };
+    const payload = tierMode
+      ? {
+          recorded_at: withLocalOffset(formData.recorded_at),
+          tier_sales: filledTiers.map((tier) => ({
+            tier_id: tier.id,
+            tickets_sold: Number(tierValues[tier.id]),
+          })),
+          attendance_checked_in: optionalNumber(formData.attendance_checked_in),
+          notes: formData.notes || null,
+        }
+      : {
+          recorded_at: withLocalOffset(formData.recorded_at),
+          tickets_sold_total: Number(formData.tickets_sold_total),
+          gate_tickets_sold: formData.gate_tickets_sold === "" ? 0 : Number(formData.gate_tickets_sold),
+          attendance_checked_in: optionalNumber(formData.attendance_checked_in),
+          revenue_to_date: optionalNumber(formData.revenue_to_date),
+          notes: formData.notes || null,
+        };
 
     try {
       await apiPost(`/events/${eventId}/sales-snapshots`, payload);
-      setNotice({ tone: "success", text: "Snapshot saved." });
       setFormData(emptySnapshotForm);
+      // The section shows the confirmation: this form remounts with the new
+      // tier values once the snapshot list reloads.
       onSaved();
     } catch (err) {
       setNotice({ tone: "error", text: err.message || "Failed to save snapshot" });
@@ -276,27 +335,52 @@ function SnapshotForm({ eventId, latest, onSaved }) {
           <input name="recorded_at" type="datetime-local" value={formData.recorded_at}
             onChange={handleChange} required />
         </Field>
-        <Field label="Total tickets sold">
-          <input name="tickets_sold_total" type="number" min="0"
-            value={formData.tickets_sold_total} onChange={handleChange} required />
-        </Field>
-        <Field label="Gate tickets sold">
-          <input name="gate_tickets_sold" type="number" min="0"
-            value={formData.gate_tickets_sold} onChange={handleChange} placeholder="0" />
-        </Field>
+        {tierMode ? (
+          tiers.map((tier, index) => (
+            <Field key={tier.id} label={`${tier.name} sold`}
+              hint={`${formatKes(tier.price)}${tier.quantity_available != null ? ` · ${formatNumber(tier.quantity_available)} available` : ""}`}>
+              <span className="tier-input">
+                <i className="tier-swatch" style={{ background: tierColor(index) }} aria-hidden="true" />
+                <input type="number" min="0" max={tier.quantity_available ?? undefined}
+                  value={tierValues[tier.id] ?? ""}
+                  onChange={(e) => setTierValues((prev) => ({ ...prev, [tier.id]: e.target.value }))} />
+              </span>
+            </Field>
+          ))
+        ) : (
+          <>
+            <Field label="Total tickets sold">
+              <input name="tickets_sold_total" type="number" min="0"
+                value={formData.tickets_sold_total} onChange={handleChange} required />
+            </Field>
+            <Field label="Gate tickets sold">
+              <input name="gate_tickets_sold" type="number" min="0"
+                value={formData.gate_tickets_sold} onChange={handleChange} placeholder="0" />
+            </Field>
+          </>
+        )}
         <Field label="Attendance checked in">
           <input name="attendance_checked_in" type="number" min="0"
             value={formData.attendance_checked_in} onChange={handleChange} />
         </Field>
-        <Field label="Revenue to date (KES)">
-          <input name="revenue_to_date" type="number" min="0" step="any"
-            value={formData.revenue_to_date} onChange={handleChange} />
-        </Field>
+        {!tierMode && (
+          <Field label="Revenue to date (KES)">
+            <input name="revenue_to_date" type="number" min="0" step="any"
+              value={formData.revenue_to_date} onChange={handleChange} />
+          </Field>
+        )}
         <Field label="Notes" wide>
           <input name="notes" value={formData.notes} onChange={handleChange}
             placeholder="e.g. Early-bird phase closed" />
         </Field>
       </div>
+      {tierMode && (
+        <p className="tier-totals" aria-live="polite">
+          Total <b>{formatNumber(computed.total)}</b> tickets · gate{" "}
+          <b>{formatNumber(computed.gate)}</b> · revenue <b>{formatKes(computed.revenue)}</b>
+          <span className="event-sub"> - calculated from the tiers. Leave a tier blank to skip it.</span>
+        </p>
+      )}
       <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
         {notice?.text}
       </Notice>
@@ -304,11 +388,115 @@ function SnapshotForm({ eventId, latest, onSaved }) {
         <button type="button" className="ghost-button" onClick={prefillGateCount}>
           Log gate / event-day count
         </button>
-        <button type="submit" className="primary-button" disabled={submitting}>
+        <button type="submit" className="primary-button"
+          disabled={submitting || (tierMode && filledTiers.length === 0)}>
           {submitting ? "Saving…" : "Save snapshot"}
         </button>
       </div>
     </form>
+  );
+}
+
+function TierSalesCharts({ eventId, snapshots, tiers }) {
+  const breakdownQuery = useApiData(`/events/${eventId}/revenue-breakdown`);
+  const breakdown = breakdownQuery.data;
+
+  const shown = tiers.slice(0, MAX_TIER_SERIES);
+  const hasOther = tiers.length > MAX_TIER_SERIES;
+  const rows = snapshots
+    .filter((s) => s.tier_sales)
+    .map((s) => {
+      const row = { label: formatDateTime(s.recorded_at), other: 0 };
+      s.tier_sales.forEach((sale) => {
+        const index = tiers.findIndex((t) => t.id === sale.tier_id);
+        if (index >= 0 && index < MAX_TIER_SERIES) row[`t${sale.tier_id}`] = sale.tickets_sold;
+        else row.other += sale.tickets_sold;
+      });
+      return row;
+    });
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="tier-charts">
+      <div className="chart-box">
+        <h3>Tickets sold per tier</h3>
+        <div className="legend" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+          {shown.map((tier, index) => (
+            <span key={tier.id}>
+              <i style={{ background: tierColor(index) }} /> {tier.name}
+            </span>
+          ))}
+          {hasOther && (
+            <span>
+              <i style={{ background: tierColor(MAX_TIER_SERIES) }} /> Other tiers
+            </span>
+          )}
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis width={48} tickFormatter={(v) => formatNumber(v)} />
+            <Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }}
+              formatter={(value, name) => [formatNumber(value), name]} />
+            {shown.map((tier, index) => (
+              <Bar key={tier.id} dataKey={`t${tier.id}`} name={tier.name} stackId="tiers"
+                fill={tierColor(index)} stroke={SURFACE} strokeWidth={2} maxBarSize={36} />
+            ))}
+            {hasOther && (
+              <Bar dataKey="other" name="Other tiers" stackId="tiers"
+                fill={tierColor(MAX_TIER_SERIES)} stroke={SURFACE} strokeWidth={2} maxBarSize={36} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {breakdown?.has_tier_data && (
+        <>
+          <div className="tier-share">
+            <div className="tier-share-head">
+              <h3>Share of tickets vs share of revenue</h3>
+              <div className="legend">
+                <span>
+                  <i style={{ background: INK_MUTED }} /> Tickets
+                </span>
+                <span>
+                  <i style={{ background: INK }} /> Revenue
+                </span>
+              </div>
+            </div>
+            <ul>
+              {breakdown.tiers.map((tier) => (
+                <li key={tier.tier_id}>
+                  <div className="tier-share-name">
+                    {tier.name}
+                    {tier.sold_out && <span className="pill pill-low">Sold out</span>}
+                  </div>
+                  <div className="tier-share-bars">
+                    <div className="share-row">
+                      <span className="share-bar" style={{ width: `${(tier.share_of_tickets_pct ?? 0) * SHARE_BAR_SCALE}%`, background: INK_MUTED }} />
+                      <span className="share-label">Tickets {formatPct(tier.share_of_tickets_pct ?? 0)}</span>
+                    </div>
+                    <div className="share-row">
+                      <span className="share-bar" style={{ width: `${(tier.share_of_revenue_pct ?? 0) * SHARE_BAR_SCALE}%`, background: INK }} />
+                      <span className="share-label">Revenue {formatPct(tier.share_of_revenue_pct ?? 0)}</span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="sales-stats">
+            <StatCard label="Realized average price" value={formatKes(breakdown.realized_average_price)}
+              note={`base price ${formatKes(breakdown.base_price)}`} />
+            <StatCard label="Revenue from tiers" value={formatKes(breakdown.revenue_total)}
+              note={`${formatNumber(breakdown.tickets_sold_total)} tickets`} />
+          </div>
+          <p className="live-note">{breakdown.explanation}</p>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -346,7 +534,10 @@ function SnapshotTable({ eventId, snapshots, onDeleted }) {
             {[...snapshots].reverse().map((s) => (
               <tr key={s.id}>
                 <td>{formatDateTime(s.recorded_at)}</td>
-                <td>{formatNumber(s.tickets_sold_total)}</td>
+                <td title={s.tier_sales ? s.tier_sales.map((t) => `${t.tier_name}: ${t.tickets_sold}`).join(", ") : undefined}>
+                  {formatNumber(s.tickets_sold_total)}
+                  {s.tier_sales && <div className="event-sub">{s.tier_sales.length} tiers</div>}
+                </td>
                 <td>{formatNumber(s.gate_tickets_sold)}</td>
                 <td>{formatNumber(s.attendance_checked_in)}</td>
                 <td>{formatKes(s.revenue_to_date)}</td>
@@ -451,14 +642,16 @@ function CloseOutPanel({ event, preview, onFinalized }) {
   );
 }
 
-export function SalesTrackingSection({ event, onEventUpdated }) {
+export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
   const snapshotsQuery = useApiData(`/events/${event.id}/sales-snapshots`);
   const progressQuery = useApiData(`/events/${event.id}/sales-progress`);
   const [liveVersion, setLiveVersion] = useState(0);
+  const [savedNotice, setSavedNotice] = useState("");
 
   const snapshots = snapshotsQuery.data ?? [];
   const progress = progressQuery.data;
   const latest = snapshots.length ? snapshots[snapshots.length - 1] : null;
+  const latestTierSnapshot = [...snapshots].reverse().find((s) => s.tier_sales) ?? null;
 
   function reloadSales() {
     snapshotsQuery.reload();
@@ -503,6 +696,9 @@ export function SalesTrackingSection({ event, onEventUpdated }) {
           </div>
           <SalesChart snapshots={snapshots} progress={progress} eventDate={event.event_date} />
           <p className="live-note">{progress.explanation}</p>
+          {tiers.length > 0 && (
+            <TierSalesCharts key={`${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} snapshots={snapshots} tiers={tiers} />
+          )}
           <SnapshotTable eventId={event.id} snapshots={snapshots} onDeleted={reloadSales} />
           {canRecordActuals(event.event_date) && progress.finalize_preview && (
             <CloseOutPanel
@@ -517,7 +713,20 @@ export function SalesTrackingSection({ event, onEventUpdated }) {
         </>
       )}
 
-      <SnapshotForm eventId={event.id} latest={latest} onSaved={reloadSales} />
+      <SnapshotForm
+        key={`${tiers.map((t) => t.id).join("-")}:${latestTierSnapshot?.id ?? "none"}`}
+        eventId={event.id}
+        latest={latest}
+        tiers={tiers}
+        latestTierSnapshot={latestTierSnapshot}
+        onSaved={() => {
+          setSavedNotice("Snapshot saved.");
+          reloadSales();
+        }}
+      />
+      <Notice tone="success" onDismiss={() => setSavedNotice("")}>
+        {savedNotice}
+      </Notice>
     </section>
   );
 }

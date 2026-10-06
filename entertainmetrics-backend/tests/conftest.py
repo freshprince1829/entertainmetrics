@@ -75,3 +75,11 @@ def add_snapshot(client, event_id: int, recorded_at: str, total: int, **extra):
         f"/events/{event_id}/sales-snapshots",
         json={"recorded_at": recorded_at, "tickets_sold_total": total, **extra},
     )
+
+
+def add_tier(client, event_id: int, name: str, price: float, **extra):
+    response = client.post(
+        f"/events/{event_id}/tiers", json={"name": name, "price": price, **extra}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()

@@ -46,6 +46,24 @@ class Event(Base):
         back_populates="event",
         cascade="all, delete-orphan",
     )
+    tiers = relationship(
+        "TicketTier",
+        back_populates="event",
+        cascade="all, delete-orphan",
+    )
+
+    # Read-only summaries of the ticket tiers, exposed as optional API fields.
+    @property
+    def tier_count(self) -> int:
+        return len(self.tiers)
+
+    @property
+    def price_low(self) -> float | None:
+        return min((t.price for t in self.tiers), default=None)
+
+    @property
+    def price_high(self) -> float | None:
+        return max((t.price for t in self.tiers), default=None)
 
 
 class Artist(Base):
@@ -107,6 +125,34 @@ class Prediction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     event = relationship("Event", back_populates="predictions")
+    band = relationship(
+        "PredictionBand",
+        back_populates="prediction",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    # Optional range fields, read from the prediction's band (None for
+    # predictions made before ranges existed).
+    @property
+    def attendance_low(self):
+        return self.band.attendance_low if self.band else None
+
+    @property
+    def attendance_high(self):
+        return self.band.attendance_high if self.band else None
+
+    @property
+    def revenue_low(self):
+        return self.band.revenue_low if self.band else None
+
+    @property
+    def revenue_high(self):
+        return self.band.revenue_high if self.band else None
+
+    @property
+    def range_note(self):
+        return self.band.method_note if self.band else None
 
 
 class TicketSalesSnapshot(Base):
@@ -126,3 +172,88 @@ class TicketSalesSnapshot(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     event = relationship("Event", back_populates="sales_snapshots")
+    tier_sales_rows = relationship(
+        "SnapshotTierSales",
+        back_populates="snapshot",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def tier_sales(self):
+        """Per-tier sales for this snapshot, or None for legacy snapshots."""
+        return self.tier_sales_rows or None
+
+
+class TicketTier(Base):
+    """A kind of ticket sold for an event (early bird, VIP, gate, ...)."""
+
+    __tablename__ = "ticket_tiers"
+    __table_args__ = (
+        UniqueConstraint("event_id", "name", name="uq_ticket_tier_event_name"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    quantity_available = Column(Integer, nullable=True)
+    sale_phase = Column(String, nullable=False, default="standard")
+    is_premium = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    event = relationship("Event", back_populates="tiers")
+    sales = relationship("SnapshotTierSales", back_populates="tier")
+
+
+class SnapshotTierSales(Base):
+    """Cumulative tickets sold for one tier at the time of one snapshot."""
+
+    __tablename__ = "snapshot_tier_sales"
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "tier_id", name="uq_snapshot_tier"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    snapshot_id = Column(
+        Integer,
+        ForeignKey("ticket_sales_snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tier_id = Column(Integer, ForeignKey("ticket_tiers.id"), nullable=False, index=True)
+    tickets_sold = Column(Integer, nullable=False)
+
+    snapshot = relationship("TicketSalesSnapshot", back_populates="tier_sales_rows")
+    tier = relationship("TicketTier", back_populates="sales")
+
+    @property
+    def tier_name(self) -> str:
+        return self.tier.name
+
+    @property
+    def tier_price(self) -> float:
+        return self.tier.price
+
+
+class PredictionBand(Base):
+    """LOW / HIGH range for one prediction (rule-based heuristic band)."""
+
+    __tablename__ = "prediction_bands"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prediction_id = Column(
+        Integer,
+        ForeignKey("predictions.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    attendance_low = Column(Integer, nullable=False)
+    attendance_high = Column(Integer, nullable=False)
+    revenue_low = Column(Float, nullable=False)
+    revenue_high = Column(Float, nullable=False)
+    method_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    prediction = relationship("Prediction", back_populates="band")
