@@ -17,6 +17,7 @@ import { useApiData } from "../api";
 import { DeltaBadge, PanelButton, TickGauge, TickMeter } from "../components/meters";
 import { EventDayPatternsCard, LiveEventCard } from "../components/SalesTracking";
 import { RangeValue } from "../components/PredictionRange";
+import { TierPatternsCard } from "../components/TierAnalytics";
 import { Icon, LoadingPanel, Notice } from "../components/ui";
 import {
   canRecordActuals,
@@ -722,6 +723,7 @@ function DashboardPage() {
               <LiveEventCard key={event.id} event={event} showName />
             ))}
             <EventDayPatternsCard />
+            <TierPatternsCard />
           </div>
       </section>
 

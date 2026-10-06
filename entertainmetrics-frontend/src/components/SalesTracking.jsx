@@ -16,6 +16,7 @@ import { canRecordActuals, formatDateTime, formatKes, formatNumber } from "../fo
 import { Field, Notice, StatCard } from "./ui";
 import { ACTUAL, CHECKED_IN, INK, INK_MUTED } from "../theme";
 import { tierColor } from "../tiers";
+import { TierAnalyticsPanel } from "./TierAnalytics";
 
 // Chart surface, used for the 2px gaps between stacked segments.
 const SURFACE = "#141416";
@@ -697,7 +698,10 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated }) {
           <SalesChart snapshots={snapshots} progress={progress} eventDate={event.event_date} />
           <p className="live-note">{progress.explanation}</p>
           {tiers.length > 0 && (
-            <TierSalesCharts key={`${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} snapshots={snapshots} tiers={tiers} />
+            <>
+              <TierSalesCharts key={`${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} snapshots={snapshots} tiers={tiers} />
+              <TierAnalyticsPanel key={`analytics-${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} />
+            </>
           )}
           <SnapshotTable eventId={event.id} snapshots={snapshots} onDeleted={reloadSales} />
           {canRecordActuals(event.event_date) && progress.finalize_preview && (

@@ -2732,3 +2732,77 @@ td .pill {
 .hero-grid > * {
   min-width: 0;
 }
+
+/* ---------- Tier analytics ---------- */
+.tier-analytics {
+  margin: 8px 0 18px;
+}
+
+.tier-analytics h4 {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.analytics-note {
+  font-size: 12px;
+  color: var(--dim);
+  margin: 4px 0 14px;
+  line-height: 1.5;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 24px;
+}
+
+.analytics-grid > * {
+  min-width: 0;
+}
+
+.sellout-list,
+.insight-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-bars {
+  margin-top: 10px;
+}
+
+.sellout-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.sellout-list strong {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.insight-list li {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  padding-left: 14px;
+  position: relative;
+}
+
+.insight-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
