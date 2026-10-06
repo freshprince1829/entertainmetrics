@@ -211,16 +211,34 @@ class PredictedVsActualResponse(BaseModel):
     awaiting_results: list[AwaitingResultsItem] = []
 
 
+class TierSaleInput(BaseModel):
+    tier_id: int
+    tickets_sold: int = Field(ge=0)
+
+
 class SalesSnapshotCreate(BaseModel):
     recorded_at: datetime
-    tickets_sold_total: int = Field(ge=0)
+    # Required for legacy snapshots; computed by the server when tier_sales
+    # is provided.
+    tickets_sold_total: int | None = Field(default=None, ge=0)
     gate_tickets_sold: int = Field(default=0, ge=0)
     attendance_checked_in: int | None = Field(default=None, ge=0)
     revenue_to_date: float | None = Field(default=None, ge=0)
     notes: str | None = None
+    tier_sales: list[TierSaleInput] | None = None
 
     @model_validator(mode="after")
     def check_consistency(self):
+        if self.tier_sales is not None:
+            if not self.tier_sales:
+                raise ValueError("tier_sales cannot be empty; omit it for a legacy snapshot")
+            tier_ids = [sale.tier_id for sale in self.tier_sales]
+            if len(tier_ids) != len(set(tier_ids)):
+                raise ValueError("each tier can only appear once in tier_sales")
+            # Totals are computed (and cross-checked) by the server.
+            return self
+        if self.tickets_sold_total is None:
+            raise ValueError("tickets_sold_total is required unless tier_sales is provided")
         if self.gate_tickets_sold > self.tickets_sold_total:
             raise ValueError("gate_tickets_sold cannot exceed tickets_sold_total")
         if (
@@ -229,6 +247,15 @@ class SalesSnapshotCreate(BaseModel):
         ):
             raise ValueError("attendance_checked_in cannot exceed tickets_sold_total")
         return self
+
+
+class TierSaleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    tier_id: int
+    tier_name: str
+    tier_price: float
+    tickets_sold: int
 
 
 class SalesSnapshotResponse(BaseModel):
@@ -243,6 +270,7 @@ class SalesSnapshotResponse(BaseModel):
     revenue_to_date: float | None = None
     notes: str | None = None
     created_at: datetime | None = None
+    tier_sales: list[TierSaleResponse] | None = None
 
     @field_validator("recorded_at")
     @classmethod
@@ -373,3 +401,31 @@ class PriceRangeResponse(BaseModel):
     weighting: str | None = None
     base_price: float
     base_price_source: str
+
+
+class TierBreakdownItem(BaseModel):
+    tier_id: int
+    name: str
+    price: float
+    sale_phase: str
+    is_premium: bool
+    quantity_available: int | None = None
+    tickets_sold: int
+    revenue: float
+    share_of_tickets_pct: float | None = None
+    share_of_revenue_pct: float | None = None
+    sell_through_pct: float | None = None
+    sold_out: bool
+
+
+class RevenueBreakdownResponse(BaseModel):
+    event_id: int
+    has_tier_data: bool
+    snapshot_id: int | None = None
+    recorded_at: datetime | None = None
+    tickets_sold_total: int | None = None
+    revenue_total: float | None = None
+    realized_average_price: float | None = None
+    base_price: float
+    tiers: list[TierBreakdownItem]
+    explanation: str

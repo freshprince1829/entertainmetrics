@@ -37,6 +37,11 @@ def update_event_actuals(
 def get_sales_snapshots(db: Session, event_id: int):
     return (
         db.query(models.TicketSalesSnapshot)
+        .options(
+            selectinload(models.TicketSalesSnapshot.tier_sales_rows).selectinload(
+                models.SnapshotTierSales.tier
+            )
+        )
         .filter(models.TicketSalesSnapshot.event_id == event_id)
         .order_by(
             models.TicketSalesSnapshot.recorded_at.asc(),
@@ -49,10 +54,14 @@ def get_sales_snapshots(db: Session, event_id: int):
 def create_sales_snapshot(
     db: Session, event_id: int, snapshot: schemas.SalesSnapshotCreate
 ):
-    data = snapshot.model_dump()
+    data = snapshot.model_dump(exclude={"tier_sales"})
     # Store in UTC so ordering is correct whatever offset the client sent.
     data["recorded_at"] = as_utc(data["recorded_at"])
     db_snapshot = models.TicketSalesSnapshot(event_id=event_id, **data)
+    for sale in snapshot.tier_sales or []:
+        db_snapshot.tier_sales_rows.append(
+            models.SnapshotTierSales(tier_id=sale.tier_id, tickets_sold=sale.tickets_sold)
+        )
     db.add(db_snapshot)
     db.commit()
     db.refresh(db_snapshot)

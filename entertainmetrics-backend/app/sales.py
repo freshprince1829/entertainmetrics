@@ -108,6 +108,100 @@ def validate_new_snapshot(
     return None
 
 
+class SnapshotRejected(Exception):
+    """A snapshot failed validation; carries the HTTP status and message."""
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+def _tier_row(snapshot: models.TicketSalesSnapshot, tier_id: int):
+    return next((row for row in snapshot.tier_sales_rows if row.tier_id == tier_id), None)
+
+
+def resolve_tier_sales(
+    snapshot: schemas.SalesSnapshotCreate,
+    tiers_by_id: dict[int, models.TicketTier],
+    existing: list[models.TicketSalesSnapshot],
+) -> schemas.SalesSnapshotCreate:
+    """Validate per-tier sales and return the snapshot with totals computed:
+    tickets_sold_total = sum of tiers, gate_tickets_sold = sum of gate tiers,
+    revenue_to_date = sum(tickets_sold * tier price). Raises SnapshotRejected."""
+    new_time = as_utc(snapshot.recorded_at)
+    ordered = sort_snapshots(existing)
+
+    total = gate = 0
+    revenue = 0.0
+    for sale in snapshot.tier_sales:
+        tier = tiers_by_id.get(sale.tier_id)
+        if tier is None:
+            raise SnapshotRejected(
+                422, f"tier_id {sale.tier_id} does not belong to this event"
+            )
+        if tier.quantity_available is not None and sale.tickets_sold > tier.quantity_available:
+            raise SnapshotRejected(
+                400,
+                f"{tier.name}: {sale.tickets_sold} sold exceeds the "
+                f"{tier.quantity_available} available",
+            )
+        before = [s for s in ordered if as_utc(s.recorded_at) <= new_time and _tier_row(s, tier.id)]
+        after = [s for s in ordered if as_utc(s.recorded_at) > new_time and _tier_row(s, tier.id)]
+        if before and sale.tickets_sold < _tier_row(before[-1], tier.id).tickets_sold:
+            raise SnapshotRejected(
+                400,
+                f"{tier.name}: {sale.tickets_sold} sold is lower than the previous "
+                f"snapshot ({_tier_row(before[-1], tier.id).tickets_sold}); per-tier "
+                "sales are cumulative and cannot decrease",
+            )
+        if after and sale.tickets_sold > _tier_row(after[0], tier.id).tickets_sold:
+            raise SnapshotRejected(
+                400,
+                f"{tier.name}: {sale.tickets_sold} sold is higher than the next "
+                f"snapshot ({_tier_row(after[0], tier.id).tickets_sold}); per-tier "
+                "sales are cumulative and cannot decrease",
+            )
+        total += sale.tickets_sold
+        if tier.sale_phase == "gate":
+            gate += sale.tickets_sold
+        revenue += sale.tickets_sold * tier.price
+    revenue = round(revenue, 2)
+
+    # Totals the caller sent explicitly must agree with the tier figures.
+    sent = snapshot.model_fields_set
+    mismatches = []
+    if "tickets_sold_total" in sent and snapshot.tickets_sold_total != total:
+        mismatches.append(f"tickets_sold_total {snapshot.tickets_sold_total} != {total}")
+    if "gate_tickets_sold" in sent and snapshot.gate_tickets_sold != gate:
+        mismatches.append(f"gate_tickets_sold {snapshot.gate_tickets_sold} != {gate}")
+    if (
+        "revenue_to_date" in sent
+        and snapshot.revenue_to_date is not None
+        and abs(snapshot.revenue_to_date - revenue) > 0.01
+    ):
+        mismatches.append(f"revenue_to_date {snapshot.revenue_to_date} != {revenue}")
+    if mismatches:
+        raise SnapshotRejected(
+            422,
+            "Totals disagree with tier_sales (" + "; ".join(mismatches)
+            + "). Omit the totals and they will be computed from the tiers.",
+        )
+
+    if snapshot.attendance_checked_in is not None and snapshot.attendance_checked_in > total:
+        raise SnapshotRejected(
+            422, f"attendance_checked_in cannot exceed tickets sold across tiers ({total})"
+        )
+
+    return snapshot.model_copy(
+        update={
+            "tickets_sold_total": total,
+            "gate_tickets_sold": gate,
+            "revenue_to_date": revenue,
+        }
+    )
+
+
 def pct(part, whole) -> float | None:
     if part is None or not whole:
         return None

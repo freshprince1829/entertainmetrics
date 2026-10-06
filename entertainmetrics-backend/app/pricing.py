@@ -6,6 +6,7 @@ formula, and the average price used for revenue.
 """
 
 from . import models
+from .sales import as_utc, pct, sort_snapshots
 
 SALE_PHASES = ("early_bird", "advance", "standard", "last_minute", "gate")
 
@@ -55,4 +56,100 @@ def price_range(tiers: list[models.TicketTier]) -> dict:
         "price_high": max(prices),
         "average_price_by_quantity": round(average, 2),
         "weighting": weighting,
+    }
+
+
+def latest_tier_snapshot(snapshots: list[models.TicketSalesSnapshot]):
+    """The most recent snapshot that recorded per-tier sales, or None."""
+    with_tiers = [s for s in sort_snapshots(snapshots) if s.tier_sales_rows]
+    return with_tiers[-1] if with_tiers else None
+
+
+def compute_revenue_breakdown(
+    event: models.Event,
+    tiers: list[models.TicketTier],
+    snapshots: list[models.TicketSalesSnapshot],
+) -> dict:
+    base, _ = base_price(event, tiers)
+    latest = latest_tier_snapshot(snapshots)
+    if latest is None:
+        return {
+            "event_id": event.id,
+            "has_tier_data": False,
+            "base_price": base,
+            "tiers": [],
+            "explanation": "No tier-level sales have been recorded for this event yet.",
+        }
+
+    sold_by_tier = {row.tier_id: row.tickets_sold for row in latest.tier_sales_rows}
+    ordered_tiers = sorted_tiers(tiers)
+    total_tickets = sum(sold_by_tier.get(t.id, 0) for t in ordered_tiers)
+    total_revenue = round(sum(sold_by_tier.get(t.id, 0) * t.price for t in ordered_tiers), 2)
+
+    items = []
+    for tier in ordered_tiers:
+        sold = sold_by_tier.get(tier.id, 0)
+        tier_revenue = round(sold * tier.price, 2)
+        sold_out = tier.quantity_available is not None and sold >= tier.quantity_available > 0
+        items.append(
+            {
+                "tier_id": tier.id,
+                "name": tier.name,
+                "price": tier.price,
+                "sale_phase": tier.sale_phase,
+                "is_premium": tier.is_premium,
+                "quantity_available": tier.quantity_available,
+                "tickets_sold": sold,
+                "revenue": tier_revenue,
+                "share_of_tickets_pct": pct(sold, total_tickets),
+                "share_of_revenue_pct": pct(tier_revenue, total_revenue),
+                "sell_through_pct": pct(sold, tier.quantity_available),
+                "sold_out": sold_out,
+            }
+        )
+
+    realized = round(total_revenue / total_tickets, 2) if total_tickets else None
+
+    def joiner(item):
+        tickets, revenue = item["share_of_tickets_pct"] or 0, item["share_of_revenue_pct"] or 0
+        return "but" if revenue < tickets else "and"
+
+    sentences = []
+    for item in items:
+        if item["sold_out"]:
+            sentences.append(
+                f"{item['name']} sold out: {item['share_of_tickets_pct']}% of tickets "
+                f"{joiner(item)} {item['share_of_revenue_pct']}% of revenue."
+            )
+    for item in items:
+        if item["is_premium"] and item["tickets_sold"] and not item["sold_out"]:
+            sentences.append(
+                f"{item['name']} is {item['share_of_tickets_pct']}% of tickets "
+                f"{joiner(item)} {item['share_of_revenue_pct']}% of revenue."
+            )
+    if not sentences and total_tickets:
+        top = max(items, key=lambda i: i["revenue"])
+        sentences.append(
+            f"{top['name']} brings the most revenue: {top['share_of_revenue_pct']}% "
+            f"from {top['share_of_tickets_pct']}% of tickets."
+        )
+    if realized is not None:
+        sentences.append(
+            f"Realized average price is KES {realized:,.0f} per ticket versus a base "
+            f"price of KES {base:,.0f}."
+        )
+    else:
+        sentences.append("No tickets have been sold in any tier yet.")
+
+    return {
+        "event_id": event.id,
+        "has_tier_data": True,
+        "snapshot_id": latest.id,
+        "recorded_at": as_utc(latest.recorded_at),
+        "tickets_sold_total": total_tickets,
+        "revenue_total": total_revenue,
+        "realized_average_price": realized,
+        "base_price": base,
+        "tiers": items,
+        "explanation": " ".join(sentences),
     }

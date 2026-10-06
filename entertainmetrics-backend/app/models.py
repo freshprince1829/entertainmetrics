@@ -148,7 +148,6 @@ class TicketSalesSnapshot(Base):
         "SnapshotTierSales",
         back_populates="snapshot",
         cascade="all, delete-orphan",
-        passive_deletes=True,
     )
 
     @property

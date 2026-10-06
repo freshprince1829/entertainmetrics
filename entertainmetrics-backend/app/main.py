@@ -265,6 +265,14 @@ def create_sales_snapshot(
     try:
         event = _get_event_or_404(db, event_id)
         existing = crud.get_sales_snapshots(db, event_id)
+        if snapshot.tier_sales is not None:
+            tiers_by_id = {t.id: t for t in crud.get_event_tiers(db, event_id)}
+            try:
+                snapshot = sales.resolve_tier_sales(snapshot, tiers_by_id, existing)
+            except sales.SnapshotRejected as rejection:
+                raise HTTPException(
+                    status_code=rejection.status_code, detail=rejection.message
+                ) from rejection
         error_message = sales.validate_new_snapshot(event, existing, snapshot)
         if error_message:
             raise HTTPException(status_code=400, detail=error_message)
@@ -313,6 +321,22 @@ def get_sales_progress(event_id: int, db: Session = Depends(get_db)):
         event = _get_event_or_404(db, event_id)
         snapshots = crud.get_sales_snapshots(db, event_id)
         return sales.compute_progress(event, snapshots, date.today())
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get(
+    "/events/{event_id}/revenue-breakdown",
+    response_model=schemas.RevenueBreakdownResponse,
+)
+def get_revenue_breakdown(event_id: int, db: Session = Depends(get_db)):
+    try:
+        event = _get_event_or_404(db, event_id)
+        tiers = crud.get_event_tiers(db, event_id)
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        return pricing.compute_revenue_breakdown(event, tiers, snapshots)
     except HTTPException:
         raise
     except SQLAlchemyError as error:
