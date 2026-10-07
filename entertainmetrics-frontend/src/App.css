@@ -3124,3 +3124,19 @@ td .pill {
 .undo-entry {
   margin: 18px 0 0;
 }
+
+.daily-sales {
+  margin: 8px 0 18px;
+}
+
+.daily-sales h3 {
+  margin-bottom: 4px;
+}
+
+.daily-sales .chart-box {
+  margin: 10px 0 14px;
+}
+
+tr.no-entry td {
+  color: var(--dim);
+}

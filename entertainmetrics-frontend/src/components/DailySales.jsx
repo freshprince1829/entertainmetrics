@@ -1,8 +1,19 @@
 import { useState } from "react";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { apiDelete, apiPost } from "../api";
 import { localInputValue, withLocalOffset } from "../datetime";
-import { byRecordedAt, clampEntry, latestSnapshot, tierEntry, tierTotals } from "../dailySales";
+import { byRecordedAt, clampEntry, dailySales, latestSnapshot, tierEntry, tierTotals } from "../dailySales";
 import { formatDate, formatDateTime, formatKes, formatNumber } from "../format";
+import { INK } from "../theme";
 import { tierColor } from "../tiers";
 import { TierStepper } from "./SalesEntry";
 import { Field, Notice } from "./ui";
@@ -252,6 +263,120 @@ export function UndoLastEntry({ eventId, snapshots, tiers, onUndone }) {
       <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
         {notice?.text}
       </Notice>
+    </div>
+  );
+}
+
+const MAX_DAILY_SERIES = 6;
+// Chart surface, used for the 2px gaps between stacked segments.
+const SURFACE = "#141416";
+
+function shortDay(day) {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/**
+ * Tickets sold per day per tier (Nairobi calendar days), from the
+ * differences between cumulative snapshots.
+ */
+export function DailySalesView({ snapshots, tiers }) {
+  const days = dailySales(snapshots, tiers);
+  if (days.length === 0) return null;
+
+  const shown = tiers.slice(0, MAX_DAILY_SERIES);
+  const hasOther = tiers.length > MAX_DAILY_SERIES;
+  const nameById = Object.fromEntries(tiers.map((t) => [t.id, t.name]));
+  const data = days.map((d) => {
+    const row = { label: shortDay(d.day), total: d.total, revenue: d.revenue, other: 0 };
+    Object.entries(d.byTier).forEach(([tierId, sold]) => {
+      const index = tiers.findIndex((t) => String(t.id) === tierId);
+      if (index >= 0 && index < MAX_DAILY_SERIES) row[`t${tierId}`] = sold;
+      else row.other += sold;
+    });
+    return row;
+  });
+  const recorded = days.filter((d) => !d.noEntry);
+  const totalSold = recorded.reduce((sum, d) => sum + d.total, 0);
+  const best = recorded.reduce((top, d) => (d.total > (top?.total ?? -1) ? d : top), null);
+
+  return (
+    <div className="daily-sales">
+      <h3>Tickets sold per day</h3>
+      <p className="metric-note">
+        Differences between entries, grouped by calendar day in Nairobi time. The first entry counts
+        everything sold up to that point. {formatNumber(totalSold)} tickets over {days.length} day
+        {days.length === 1 ? "" : "s"}
+        {best && best.total > 0 && `; best day ${formatDate(best.day)} with ${formatNumber(best.total)}`}.
+      </p>
+      <div className="chart-box">
+        <div className="legend" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+          {shown.map((tier, index) => (
+            <span key={tier.id}>
+              <i style={{ background: tierColor(index) }} /> {tier.name}
+            </span>
+          ))}
+          {hasOther && (
+            <span>
+              <i style={{ background: tierColor(MAX_DAILY_SERIES) }} /> Other tiers
+            </span>
+          )}
+          <span>
+            <i className="legend-dash" style={{ borderColor: INK }} /> Total per day
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={240}>
+          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <YAxis width={48} tickFormatter={(v) => formatNumber(v)} />
+            <Tooltip
+              cursor={{ fill: "rgba(255,255,255,0.03)" }}
+              formatter={(value, name) => [formatNumber(value), name]}
+            />
+            {shown.map((tier, index) => (
+              <Bar key={tier.id} dataKey={`t${tier.id}`} name={tier.name} stackId="day"
+                fill={tierColor(index)} stroke={SURFACE} strokeWidth={2} maxBarSize={32} />
+            ))}
+            {hasOther && (
+              <Bar dataKey="other" name="Other tiers" stackId="day"
+                fill={tierColor(MAX_DAILY_SERIES)} stroke={SURFACE} strokeWidth={2} maxBarSize={32} />
+            )}
+            <Line type="monotone" dataKey="total" name="Total per day" stroke={INK}
+              strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3 }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Tickets</th>
+              <th>Revenue</th>
+              <th>By tier</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...days].reverse().map((d) => (
+              <tr key={d.day} className={d.noEntry ? "no-entry" : undefined}>
+                <td className="nowrap">{formatDate(d.day)}</td>
+                <td>{d.noEntry ? <span className="event-sub">no entry</span> : formatNumber(d.total)}</td>
+                <td className="nowrap">{d.noEntry ? "-" : formatKes(d.revenue)}</td>
+                <td className="event-sub">
+                  {d.noEntry
+                    ? "-"
+                    : Object.entries(d.byTier)
+                        .map(([tierId, sold]) => `${nameById[tierId] ?? "Tier"} ${formatNumber(sold)}`)
+                        .join(" · ") || "0"}
+                  {d.entries > 1 && ` (${d.entries} entries)`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
