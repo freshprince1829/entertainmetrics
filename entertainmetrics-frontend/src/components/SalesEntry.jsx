@@ -20,6 +20,7 @@ export function TierStepper({ value, onChange, max, previous, label }) {
   const current = value === "" || value == null ? null : Number(value);
   const step = (delta) => onChange(String(clamp((current ?? previous ?? 0) + delta, max)));
   const change = current != null && previous != null ? current - previous : null;
+  const atMax = max != null && (current ?? previous ?? 0) >= max;
 
   return (
     <div className="stepper">
@@ -27,12 +28,16 @@ export function TierStepper({ value, onChange, max, previous, label }) {
         aria-label={`${label}: minus 1`} disabled={!current}>
         −
       </button>
+      {/* Blur on wheel so scrolling the page never changes a count. */}
       <input type="number" min="0" max={max ?? undefined} value={value ?? ""}
-        aria-label={label} onChange={(e) => onChange(e.target.value)} />
-      <button type="button" className="stepper-button" onClick={() => step(1)} aria-label={`${label}: plus 1`}>
+        aria-label={label} onChange={(e) => onChange(e.target.value)}
+        onWheel={(e) => e.currentTarget.blur()} />
+      <button type="button" className="stepper-button" onClick={() => step(1)}
+        aria-label={`${label}: plus 1`} disabled={atMax}>
         +1
       </button>
-      <button type="button" className="stepper-button" onClick={() => step(10)} aria-label={`${label}: plus 10`}>
+      <button type="button" className="stepper-button" onClick={() => step(10)}
+        aria-label={`${label}: plus 10`} disabled={atMax}>
         +10
       </button>
       {change != null && change !== 0 && (

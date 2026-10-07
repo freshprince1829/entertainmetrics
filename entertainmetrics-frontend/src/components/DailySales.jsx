@@ -342,7 +342,7 @@ export function DailySalesView({ snapshots, tiers }) {
               <Bar dataKey="other" name="Other tiers" stackId="day"
                 fill={tierColor(MAX_DAILY_SERIES)} stroke={SURFACE} strokeWidth={2} maxBarSize={32} />
             )}
-            <Line type="monotone" dataKey="total" name="Total per day" stroke={INK}
+            <Line type="linear" dataKey="total" name="Total per day" stroke={INK}
               strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3 }} />
           </ComposedChart>
         </ResponsiveContainer>
