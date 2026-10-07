@@ -18,7 +18,8 @@ import { ACTUAL, CHECKED_IN, INK, INK_MUTED } from "../theme";
 import { localInputValue, withLocalOffset } from "../datetime";
 import { tierColor } from "../tiers";
 import { TierAnalyticsPanel } from "./TierAnalytics";
-import { GateMode, TierStepper } from "./SalesEntry";
+import { GateMode } from "./SalesEntry";
+import { TierDailyEntryForm } from "./DailySales";
 import { SalesImport } from "./SalesImport";
 
 // Chart surface, used for the 2px gaps between stacked segments.
@@ -221,23 +222,9 @@ export function EventDayPatternsCard() {
   );
 }
 
-function tierValuesFrom(tiers, snapshot) {
-  const sold = {};
-  (snapshot?.tier_sales ?? []).forEach((row) => {
-    sold[row.tier_id] = row.tickets_sold;
-  });
-  const values = {};
-  tiers.forEach((tier) => {
-    values[tier.id] = sold[tier.id] ?? "";
-  });
-  return values;
-}
-
-function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
-  const tierMode = tiers.length > 0;
+// Snapshot form for events without ticket tiers (cumulative totals).
+function SnapshotForm({ eventId, latest, onSaved }) {
   const [formData, setFormData] = useState(emptySnapshotForm);
-  // Tier counts are cumulative, so the form starts from the last recorded ones.
-  const [tierValues, setTierValues] = useState(() => tierValuesFrom(tiers, latestTierSnapshot));
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState(null);
 
@@ -256,24 +243,7 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
       revenue_to_date: latest?.revenue_to_date ?? "",
       notes: "Event-day count",
     });
-    if (tierMode) setTierValues(tierValuesFrom(tiers, latestTierSnapshot));
   }
-
-  const filledTiers = tiers.filter((tier) => tierValues[tier.id] !== "" && tierValues[tier.id] != null);
-  const previousValues = tierValuesFrom(tiers, latestTierSnapshot);
-  const computed = filledTiers.reduce(
-    (acc, tier) => {
-      const sold = Number(tierValues[tier.id]) || 0;
-      const before = Number(previousValues[tier.id]) || 0;
-      acc.total += sold;
-      acc.revenue += sold * tier.price;
-      acc.change += sold - before;
-      acc.changeRevenue += (sold - before) * tier.price;
-      if (tier.sale_phase === "gate") acc.gate += sold;
-      return acc;
-    },
-    { total: 0, gate: 0, revenue: 0, change: 0, changeRevenue: 0 },
-  );
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -281,30 +251,18 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
     setNotice(null);
 
     const optionalNumber = (value) => (value === "" ? null : Number(value));
-    const payload = tierMode
-      ? {
-          recorded_at: withLocalOffset(formData.recorded_at),
-          tier_sales: filledTiers.map((tier) => ({
-            tier_id: tier.id,
-            tickets_sold: Number(tierValues[tier.id]),
-          })),
-          attendance_checked_in: optionalNumber(formData.attendance_checked_in),
-          notes: formData.notes || null,
-        }
-      : {
-          recorded_at: withLocalOffset(formData.recorded_at),
-          tickets_sold_total: Number(formData.tickets_sold_total),
-          gate_tickets_sold: formData.gate_tickets_sold === "" ? 0 : Number(formData.gate_tickets_sold),
-          attendance_checked_in: optionalNumber(formData.attendance_checked_in),
-          revenue_to_date: optionalNumber(formData.revenue_to_date),
-          notes: formData.notes || null,
-        };
+    const payload = {
+      recorded_at: withLocalOffset(formData.recorded_at),
+      tickets_sold_total: Number(formData.tickets_sold_total),
+      gate_tickets_sold: formData.gate_tickets_sold === "" ? 0 : Number(formData.gate_tickets_sold),
+      attendance_checked_in: optionalNumber(formData.attendance_checked_in),
+      revenue_to_date: optionalNumber(formData.revenue_to_date),
+      notes: formData.notes || null,
+    };
 
     try {
       await apiPost(`/events/${eventId}/sales-snapshots`, payload);
       setFormData(emptySnapshotForm);
-      // The section shows the confirmation: this form remounts with the new
-      // tier values once the snapshot list reloads.
       onSaved();
     } catch (err) {
       setNotice({ tone: "error", text: err.message || "Failed to save snapshot" });
@@ -323,62 +281,27 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
           <input name="recorded_at" type="datetime-local" value={formData.recorded_at}
             onChange={handleChange} required />
         </Field>
-        {tierMode ? (
-          tiers.map((tier, index) => (
-            <Field key={tier.id} wide label={`${tier.name} sold`}
-              hint={`${formatKes(tier.price)}${tier.quantity_available != null ? ` · ${formatNumber(tier.quantity_available)} available` : ""}`}>
-              <span className="tier-input">
-                <i className="tier-swatch" style={{ background: tierColor(index) }} aria-hidden="true" />
-                <TierStepper
-                  label={`${tier.name} sold`}
-                  value={tierValues[tier.id] ?? ""}
-                  max={tier.quantity_available ?? undefined}
-                  previous={previousValues[tier.id] === "" ? null : Number(previousValues[tier.id])}
-                  onChange={(value) => setTierValues((prev) => ({ ...prev, [tier.id]: value }))}
-                />
-              </span>
-            </Field>
-          ))
-        ) : (
-          <>
-            <Field label="Total tickets sold">
-              <input name="tickets_sold_total" type="number" min="0"
-                value={formData.tickets_sold_total} onChange={handleChange} required />
-            </Field>
-            <Field label="Gate tickets sold">
-              <input name="gate_tickets_sold" type="number" min="0"
-                value={formData.gate_tickets_sold} onChange={handleChange} placeholder="0" />
-            </Field>
-          </>
-        )}
+        <Field label="Total tickets sold">
+          <input name="tickets_sold_total" type="number" min="0"
+            value={formData.tickets_sold_total} onChange={handleChange} required />
+        </Field>
+        <Field label="Gate tickets sold">
+          <input name="gate_tickets_sold" type="number" min="0"
+            value={formData.gate_tickets_sold} onChange={handleChange} placeholder="0" />
+        </Field>
         <Field label="Attendance checked in">
           <input name="attendance_checked_in" type="number" min="0"
             value={formData.attendance_checked_in} onChange={handleChange} />
         </Field>
-        {!tierMode && (
-          <Field label="Revenue to date (KES)">
-            <input name="revenue_to_date" type="number" min="0" step="any"
-              value={formData.revenue_to_date} onChange={handleChange} />
-          </Field>
-        )}
+        <Field label="Revenue to date (KES)">
+          <input name="revenue_to_date" type="number" min="0" step="any"
+            value={formData.revenue_to_date} onChange={handleChange} />
+        </Field>
         <Field label="Notes" wide>
           <input name="notes" value={formData.notes} onChange={handleChange}
             placeholder="e.g. Early-bird phase closed" />
         </Field>
       </div>
-      {tierMode && (
-        <p className="tier-totals" aria-live="polite">
-          {latestTierSnapshot && (
-            <>
-              Since the last snapshot: <b>{computed.change >= 0 ? "+" : ""}{formatNumber(computed.change)}</b>{" "}
-              tickets ({computed.changeRevenue >= 0 ? "+" : "−"}{formatKes(Math.abs(computed.changeRevenue))}).{" "}
-            </>
-          )}
-          New totals: <b>{formatNumber(computed.total)}</b> tickets · gate{" "}
-          <b>{formatNumber(computed.gate)}</b> · revenue <b>{formatKes(computed.revenue)}</b>
-          <span className="event-sub"> - calculated from the tiers. Leave a tier blank to skip it.</span>
-        </p>
-      )}
       <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
         {notice?.text}
       </Notice>
@@ -386,8 +309,7 @@ function SnapshotForm({ eventId, latest, tiers, latestTierSnapshot, onSaved }) {
         <button type="button" className="ghost-button" onClick={prefillGateCount}>
           Log gate / event-day count
         </button>
-        <button type="submit" className="primary-button"
-          disabled={submitting || (tierMode && filledTiers.length === 0)}>
+        <button type="submit" className="primary-button" disabled={submitting}>
           {submitting ? "Saving…" : "Save snapshot"}
         </button>
       </div>
@@ -733,17 +655,28 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTier
         />
       )}
 
-      <SnapshotForm
-        key={`${tiers.map((t) => t.id).join("-")}:${latestTierSnapshot?.id ?? "none"}`}
-        eventId={event.id}
-        latest={latest}
-        tiers={tiers}
-        latestTierSnapshot={latestTierSnapshot}
-        onSaved={() => {
-          setSavedNotice("Snapshot saved.");
-          reloadSales();
-        }}
-      />
+      {tiers.length > 0 ? (
+        <TierDailyEntryForm
+          key={`${tiers.map((t) => t.id).join("-")}:${latestTierSnapshot?.id ?? "none"}`}
+          event={event}
+          tiers={tiers}
+          snapshots={snapshots}
+          latestTierSnapshot={latestTierSnapshot}
+          onSaved={() => {
+            setSavedNotice("Entry saved.");
+            reloadSales();
+          }}
+        />
+      ) : (
+        <SnapshotForm
+          eventId={event.id}
+          latest={latest}
+          onSaved={() => {
+            setSavedNotice("Snapshot saved.");
+            reloadSales();
+          }}
+        />
+      )}
       <Notice tone="success" onDismiss={() => setSavedNotice("")}>
         {savedNotice}
       </Notice>
