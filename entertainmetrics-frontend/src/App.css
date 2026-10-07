@@ -3116,3 +3116,7 @@ td .pill {
 .entry-summary p {
   margin: 0;
 }
+
+.gate-sub.low {
+  color: var(--negative);
+}

@@ -649,6 +649,7 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTier
         <GateMode
           event={event}
           tiers={tiers}
+          snapshots={snapshots}
           latestTierSnapshot={latestTierSnapshot}
           onClose={() => setGateOpen(false)}
           onSaved={reloadSales}
