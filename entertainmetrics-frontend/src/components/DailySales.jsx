@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { apiPost } from "../api";
+import { apiDelete, apiPost } from "../api";
 import { localInputValue, withLocalOffset } from "../datetime";
-import { clampEntry, latestSnapshot, tierEntry, tierTotals } from "../dailySales";
+import { byRecordedAt, clampEntry, latestSnapshot, tierEntry, tierTotals } from "../dailySales";
 import { formatDate, formatDateTime, formatKes, formatNumber } from "../format";
 import { tierColor } from "../tiers";
 import { TierStepper } from "./SalesEntry";
@@ -165,5 +165,93 @@ export function TierDailyEntryForm({ event, tiers, snapshots, latestTierSnapshot
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Deletes the most recent snapshot after a confirmation that names its date
+ * and numbers. Daily entries build on each other, so a wrong entry should be
+ * undone before adding the next one.
+ */
+export function UndoLastEntry({ eventId, snapshots, tiers, onUndone }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  const ordered = [...snapshots].sort(byRecordedAt);
+  const last = ordered.at(-1);
+  if (!last) return null;
+  const previous = ordered.at(-2) ?? null;
+
+  const added = last.tickets_sold_total - (previous?.tickets_sold_total ?? 0);
+  const tierChanges = last.tier_sales
+    ? (() => {
+        const before = tierTotals(tiers, previous).sold;
+        return last.tier_sales
+          .map((row) => ({ name: row.tier_name, delta: row.tickets_sold - (before[row.tier_id] ?? 0) }))
+          .filter((change) => change.delta !== 0);
+      })()
+    : [];
+
+  async function handleUndo() {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await apiDelete(`/events/${eventId}/sales-snapshots/${last.id}`);
+      setConfirming(false);
+      setNotice({ tone: "success", text: `Entry of ${formatDateTime(last.recorded_at)} was deleted.` });
+      onUndone();
+    } catch (err) {
+      setNotice({ tone: "error", text: err.message || "Failed to delete the entry" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="undo-entry">
+      {confirming ? (
+        <div className="confirm-box">
+          <strong>Delete the entry of {formatDateTime(last.recorded_at)}?</strong>
+          <ul>
+            <li>
+              It recorded <b>{formatNumber(last.tickets_sold_total)}</b> tickets in total
+              {last.revenue_to_date != null && <> and <b>{formatKes(last.revenue_to_date)}</b></>}
+              {previous && (
+                <> ({added >= 0 ? "+" : ""}{formatNumber(added)} tickets compared with the entry before)</>
+              )}
+              .
+            </li>
+            {tierChanges.length > 0 && (
+              <li>
+                {tierChanges
+                  .map((c) => `${c.name} ${c.delta > 0 ? "+" : ""}${formatNumber(c.delta)}`)
+                  .join(" · ")}
+              </li>
+            )}
+            {last.notes && <li>Note: {last.notes}</li>}
+          </ul>
+          <p className="event-sub">
+            Totals go back to {previous ? `the entry of ${formatDateTime(previous.recorded_at)}` : "no entries"}.
+            This cannot be undone.
+          </p>
+          <div className="modal-actions">
+            <button type="button" className="ghost-button" onClick={() => setConfirming(false)}>
+              Keep it
+            </button>
+            <button type="button" className="primary-button" onClick={handleUndo} disabled={busy}>
+              {busy ? "Deleting…" : "Delete this entry"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="ghost-button" onClick={() => setConfirming(true)}>
+          Undo last entry
+        </button>
+      )}
+      <Notice tone={notice?.tone} onDismiss={() => setNotice(null)}>
+        {notice?.text}
+      </Notice>
+    </div>
   );
 }

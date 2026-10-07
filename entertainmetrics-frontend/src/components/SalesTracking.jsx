@@ -19,7 +19,7 @@ import { localInputValue, withLocalOffset } from "../datetime";
 import { tierColor } from "../tiers";
 import { TierAnalyticsPanel } from "./TierAnalytics";
 import { GateMode } from "./SalesEntry";
-import { TierDailyEntryForm } from "./DailySales";
+import { TierDailyEntryForm, UndoLastEntry } from "./DailySales";
 import { SalesImport } from "./SalesImport";
 
 // Chart surface, used for the 2px gaps between stacked segments.
@@ -655,6 +655,8 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTier
           onSaved={reloadSales}
         />
       )}
+
+      <UndoLastEntry eventId={event.id} snapshots={snapshots} tiers={tiers} onUndone={reloadSales} />
 
       {tiers.length > 0 ? (
         <TierDailyEntryForm
