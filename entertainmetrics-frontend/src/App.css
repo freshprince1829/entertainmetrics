@@ -3078,3 +3078,65 @@ td .pill {
   color: var(--negative);
   line-height: 1.5;
 }
+
+/* ---------- Daily tier sales entry ---------- */
+.entry-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.entry-label .pill {
+  margin: 0;
+  font-size: 11px;
+}
+
+.entry-after {
+  flex: none;
+  min-width: 92px;
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.entry-hint.low {
+  color: var(--negative);
+}
+
+.entry-summary {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.entry-summary p {
+  margin: 0;
+}
+
+.gate-sub.low {
+  color: var(--negative);
+}
+
+.undo-entry {
+  margin: 18px 0 0;
+}
+
+.daily-sales {
+  margin: 8px 0 18px;
+}
+
+.daily-sales h3 {
+  margin-bottom: 4px;
+}
+
+.daily-sales .chart-box {
+  margin: 10px 0 14px;
+}
+
+tr.no-entry td {
+  color: var(--dim);
+}
