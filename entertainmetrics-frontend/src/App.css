@@ -3140,3 +3140,16 @@ td .pill {
 tr.no-entry td {
   color: var(--dim);
 }
+
+/* ---------- Edit event details ---------- */
+.edit-event {
+  margin-bottom: 8px;
+}
+
+.edit-event .form-section:first-child {
+  margin-top: 0;
+}
+
+.edit-event-note {
+  margin: 12px 0 0;
+}
