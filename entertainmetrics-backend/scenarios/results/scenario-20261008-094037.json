@@ -1,0 +1,415 @@
+[
+  {
+    "id": "SC-01",
+    "case": "Create 3 sample artists",
+    "expected": "3",
+    "actual": "3",
+    "result": "PASS"
+  },
+  {
+    "id": "U-01",
+    "case": "Base formula, no lineup/tiers: 10000*0.4 + 100000/50 - 1000/20",
+    "expected": "5950",
+    "actual": "5950",
+    "result": "PASS"
+  },
+  {
+    "id": "U-01b",
+    "case": "Revenue = attendance x ticket price",
+    "expected": "5950000.0",
+    "actual": "5950000.0",
+    "result": "PASS"
+  },
+  {
+    "id": "U-03",
+    "case": "Confidence within [0.3, 0.95]",
+    "expected": "0.3 <= c <= 0.95",
+    "actual": "0.6500000000000001",
+    "result": "PASS"
+  },
+  {
+    "id": "U-02",
+    "case": "Formula result above capacity is capped",
+    "expected": "1000",
+    "actual": "1000",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-04",
+    "case": "Snapshots listed in recorded_at order",
+    "expected": "ascending",
+    "actual": "ascending",
+    "result": "PASS"
+  },
+  {
+    "id": "U-12a",
+    "case": "Decreasing total rejected",
+    "expected": "4xx",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "U-12b",
+    "case": "Negative value rejected",
+    "expected": "422",
+    "actual": "422",
+    "result": "PASS"
+  },
+  {
+    "id": "U-12c",
+    "case": "Total above capacity rejected",
+    "expected": "4xx",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "U-13a",
+    "case": "Check-ins above tickets sold rejected",
+    "expected": "4xx",
+    "actual": "422",
+    "result": "PASS"
+  },
+  {
+    "id": "U-13b",
+    "case": "Gate tickets above total rejected",
+    "expected": "4xx",
+    "actual": "422",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-05",
+    "case": "Snapshot dated after the day following the event rejected",
+    "expected": "4xx",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-07",
+    "case": "Per-tier total below the tier's earlier cumulative rejected",
+    "expected": "4xx",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-06",
+    "case": "Snapshot total that differs from tier sums rejected",
+    "expected": "4xx",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-02a",
+    "case": "Unknown event returns 404",
+    "expected": "404",
+    "actual": "404",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-02b",
+    "case": "Duplicate tier name rejected (409)",
+    "expected": "409",
+    "actual": "201",
+    "result": "FAIL"
+  },
+  {
+    "id": "IT-08a",
+    "case": "Price change blocked once tier has sales",
+    "expected": "4xx",
+    "actual": "409",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-08b",
+    "case": "Delete blocked once tier has sales",
+    "expected": "4xx",
+    "actual": "409",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-03",
+    "case": "Copy tiers from another event",
+    "expected": "3",
+    "actual": "4",
+    "result": "FAIL"
+  },
+  {
+    "id": "IT-03b",
+    "case": "Copy from unknown event returns 404",
+    "expected": "404",
+    "actual": "404",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-10a",
+    "case": "Snapshots alone never wrote actuals",
+    "expected": "all null for sample events",
+    "actual": "[None, None, None]",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-10b",
+    "case": "Finalize refused before the event date",
+    "expected": "400",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-10c-3",
+    "case": "Finalize Jazz Night (sample)",
+    "expected": "200",
+    "actual": "200",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-10c-4",
+    "case": "Finalize Afrobeat Bash (sample)",
+    "expected": "200",
+    "actual": "200",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-10c-5",
+    "case": "Finalize Gengetone Live (sample)",
+    "expected": "200",
+    "actual": "200",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-10d",
+    "case": "Actual attendance equals the finalize preview",
+    "expected": "match",
+    "actual": "[1848, 2467, 1503]",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-16a",
+    "case": "Predicted vs Actual compares the 3 finalized events",
+    "expected": "3",
+    "actual": "3",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-16b",
+    "case": "Attendance % error = (predicted - actual) / actual x 100",
+    "expected": "within 0.1",
+    "actual": "see items",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-12",
+    "case": "Event-day patterns usable with 3 completed events",
+    "expected": "sufficient_history true",
+    "actual": "3 events, sufficient=True",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-15a",
+    "case": "Tier patterns usable with 3 completed events",
+    "expected": "sufficient_history true",
+    "actual": "3 events, sufficient=True",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-15b",
+    "case": "Tier ticket counts sum to the snapshot total",
+    "expected": "3525",
+    "actual": "3525",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-15c",
+    "case": "Tier revenue sums to revenue total",
+    "expected": "8130000.0",
+    "actual": "8130000.0",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-02c",
+    "case": "Tiers listed in sort order then price",
+    "expected": "5 tiers",
+    "actual": "5",
+    "result": "PASS"
+  },
+  {
+    "id": "U-08",
+    "case": "Price range weighted by quantity",
+    "expected": "1725.64",
+    "actual": "1725.64",
+    "result": "PASS"
+  },
+  {
+    "id": "V-02a",
+    "case": "Five daily entries sent as cumulative totals accepted",
+    "expected": "5 x 201",
+    "actual": "ok",
+    "result": "PASS"
+  },
+  {
+    "id": "V-02b",
+    "case": "Entry above a tier's quantity (Early Bird 1501 of 1500) rejected",
+    "expected": "4xx",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "V-03",
+    "case": "Entry dated before the last entry (cumulative would fall) handled",
+    "expected": "accepted only if still ascending",
+    "actual": "400",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-09a",
+    "case": "Progress total equals sum of cumulative tiers",
+    "expected": "3380",
+    "actual": "3380",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-09b",
+    "case": "Sell-through % = sold / capacity",
+    "expected": "42.2",
+    "actual": "42.2",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-09c",
+    "case": "Velocity is reported with several snapshots",
+    "expected": "> 0",
+    "actual": "727.5",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-09d",
+    "case": "Projection capped at capacity",
+    "expected": "<= 8000",
+    "actual": "8000",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-15d",
+    "case": "Revenue breakdown equals sum of tier price x sold",
+    "expected": "4830000",
+    "actual": "4830000.0",
+    "result": "PASS"
+  },
+  {
+    "id": "U-04",
+    "case": "Band ordering low <= expected <= high <= capacity",
+    "expected": "valid",
+    "actual": "None / 7040 / None",
+    "result": "FAIL"
+  },
+  {
+    "id": "P-07",
+    "case": "Premium/VIP tiers do not lower attendance below the no-tier base",
+    "expected": ">= base formula",
+    "actual": "7040",
+    "result": "FAIL"
+  },
+  {
+    "id": "IT-09e",
+    "case": "Live status is one of the defined values",
+    "expected": "on_track/ahead/behind",
+    "actual": "behind",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-09f",
+    "case": "Live view is not final",
+    "expected": "is_final false",
+    "actual": "False",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-13a",
+    "case": "Dry run matches case-insensitively and writes nothing",
+    "expected": "can_import true, 0 written",
+    "actual": "can_import=False, snapshots 0->0",
+    "result": "FAIL"
+  },
+  {
+    "id": "IT-13b",
+    "case": "Import creates one snapshot per timestamp",
+    "expected": "2",
+    "actual": "0",
+    "result": "FAIL"
+  },
+  {
+    "id": "IT-14a",
+    "case": "Unknown ticket type blocks import and is listed",
+    "expected": "can_import false",
+    "actual": "can_import=False, unmatched=1",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-14b",
+    "case": "One bad row rejects the whole import (all-or-nothing)",
+    "expected": "4xx, nothing written",
+    "actual": "422, snapshots 0->0",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-14c",
+    "case": "Import above capacity/tier quantity rejected",
+    "expected": "4xx",
+    "actual": "422",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-01a",
+    "case": "Removing from a lineup keeps the artist",
+    "expected": "artist still listed",
+    "actual": "True",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-01b",
+    "case": "Deleting an artist removes them from every lineup",
+    "expected": "not in lineup",
+    "actual": "[3]",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-01c",
+    "case": "Saved predictions survive artist removal",
+    "expected": ">= 3 predictions",
+    "actual": "6",
+    "result": "PASS"
+  },
+  {
+    "id": "IT-01d",
+    "case": "Delete unknown artist returns 404",
+    "expected": "404",
+    "actual": "404",
+    "result": "PASS"
+  },
+  {
+    "id": "H-04",
+    "case": "Malformed input to create endpoints returns 4xx, never 500",
+    "expected": "all 4xx",
+    "actual": "[422, 422, 422, 422]",
+    "result": "PASS"
+  },
+  {
+    "id": "H-04b",
+    "case": "Quote/SQL text is stored as plain text and tables survive",
+    "expected": "artists table still readable",
+    "actual": "200",
+    "result": "PASS"
+  },
+  {
+    "id": "H-07",
+    "case": "3,000-row CSV import finishes or fails cleanly",
+    "expected": "2xx or clean 4xx, no 500",
+    "actual": "200 in 129.8s",
+    "result": "PASS"
+  },
+  {
+    "id": "H-08",
+    "case": "Key endpoints respond in under 2 s (local SQLite, ~50 events)",
+    "expected": "< 2.0 s each",
+    "actual": "{'dashboard summary': 0.014, 'events list': 0.015, 'predicted vs actual': 0.044, 'sales progress': 0.012, 'tier analytics': 0.014, 'predict': 0.321}",
+    "result": "PASS"
+  }
+]

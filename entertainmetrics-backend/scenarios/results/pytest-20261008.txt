@@ -1,0 +1,128 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-8.3.3, pluggy-1.6.0 -- /tmp/emvenv/bin/python
+rootdir: /sessions/rcw-01yppbpacsvmom6t6vg1tcfq/mnt/EntertainMetrics/entertainmetrics-backend
+plugins: anyio-4.15.1
+collecting ... collected 102 items
+
+tests/test_artist_removal.py::test_remove_artist_from_one_lineup_keeps_artist PASSED [  0%]
+tests/test_artist_removal.py::test_remove_unknown_lineup_entry_returns_404 PASSED [  1%]
+tests/test_artist_removal.py::test_delete_artist_removes_them_from_every_lineup PASSED [  2%]
+tests/test_artist_removal.py::test_delete_unknown_artist_returns_404 PASSED [  3%]
+tests/test_artist_removal.py::test_saved_predictions_are_kept_and_new_ones_reflect_the_lineup PASSED [  4%]
+tests/test_prediction_ranges.py::test_band_math_with_known_numbers PASSED [  5%]
+tests/test_prediction_ranges.py::test_bands_always_valid[1000-1000] PASSED [  6%]
+tests/test_prediction_ranges.py::test_bands_always_valid[5000-2000] PASSED [  7%]
+tests/test_prediction_ranges.py::test_bands_always_valid[2000-200000] PASSED [  8%]
+tests/test_prediction_ranges.py::test_band_valid_with_tiers_and_sales PASSED [  9%]
+tests/test_prediction_ranges.py::test_band_narrows_with_more_snapshots PASSED [ 10%]
+tests/test_prediction_ranges.py::test_legacy_predictions_return_null_band_fields PASSED [ 11%]
+tests/test_prediction_ranges.py::test_live_status_uses_the_band PASSED   [ 12%]
+tests/test_prediction_ranges.py::test_live_status_falls_back_without_band PASSED [ 13%]
+tests/test_prediction_ranges.py::test_predicted_vs_actual_range_flags_and_coverage PASSED [ 14%]
+tests/test_prediction_sales.py::test_regression_zero_and_one_snapshot_predictions_unchanged PASSED [ 15%]
+tests/test_prediction_sales.py::test_two_snapshots_blend_sales_projection_without_history PASSED [ 16%]
+tests/test_prediction_sales.py::test_learned_patterns_applied_with_sufficient_history PASSED [ 17%]
+tests/test_prediction_sales.py::test_one_completed_event_is_not_enough_history PASSED [ 18%]
+tests/test_prediction_sales.py::test_blended_prediction_stays_within_capacity PASSED [ 19%]
+tests/test_prediction_sales.py::test_confidence_boost_is_capped PASSED   [ 20%]
+tests/test_prediction_tiers.py::test_no_tiers_prediction_is_unchanged PASSED [ 21%]
+tests/test_prediction_tiers.py::test_premium_tiers_do_not_lower_attendance PASSED [ 22%]
+tests/test_prediction_tiers.py::test_large_vip_share_of_sales_keeps_attendance_and_raises_revenue PASSED [ 23%]
+tests/test_prediction_tiers.py::test_what_if_price_overrides_tier_pricing PASSED [ 24%]
+tests/test_prediction_tiers.py::test_sales_blend_still_works_with_tiers PASSED [ 25%]
+tests/test_prediction_tiers.py::test_tier_patterns_with_zero_one_and_two_completed_events PASSED [ 26%]
+tests/test_sales_import.py::test_dry_run_then_import_with_case_insensitive_matching PASSED [ 27%]
+tests/test_sales_import.py::test_unmatched_types_get_keyword_suggestions_and_block_import PASSED [ 28%]
+tests/test_sales_import.py::test_map_and_create_unmatched_types PASSED   [ 29%]
+tests/test_sales_import.py::test_row_validation_errors PASSED            [ 30%]
+tests/test_sales_import.py::test_import_is_all_or_nothing PASSED         [ 31%]
+tests/test_sales_import.py::test_import_respects_capacity_quantity_and_existing_snapshots PASSED [ 32%]
+tests/test_sales_import.py::test_import_404 PASSED                       [ 33%]
+tests/test_sales_import.py::test_keyword_suggestions[Early Bird-general-early_bird-public-None] PASSED [ 34%]
+tests/test_sales_import.py::test_keyword_suggestions[Advance GA-general-advance-public-None] PASSED [ 35%]
+tests/test_sales_import.py::test_keyword_suggestions[VVIP Lounge-vvip-premium-public-None] PASSED [ 36%]
+tests/test_sales_import.py::test_keyword_suggestions[VIP Early-vip-early_bird-public-None] PASSED [ 37%]
+tests/test_sales_import.py::test_keyword_suggestions[Gate / Door-general-gate-public-None] PASSED [ 38%]
+tests/test_sales_import.py::test_keyword_suggestions[Last Minute-general-last_minute-public-None] PASSED [ 39%]
+tests/test_sales_import.py::test_keyword_suggestions[Group of 5-group-standard-group-None] PASSED [ 40%]
+tests/test_sales_import.py::test_keyword_suggestions[Equity Bank Card Holders-general-standard-partner-Equity Bank] PASSED [ 41%]
+tests/test_sales_import.py::test_keyword_suggestions[Partner ticket-general-standard-partner-None] PASSED [ 42%]
+tests/test_sales_import.py::test_keyword_suggestions[Guest list-general-standard-complimentary-None] PASSED [ 43%]
+tests/test_sales_import.py::test_rows_without_scans_keep_previous_check_ins PASSED [ 44%]
+tests/test_sales_progress.py::test_progress_without_snapshots PASSED     [ 45%]
+tests/test_sales_progress.py::test_progress_pre_event_math PASSED        [ 46%]
+tests/test_sales_progress.py::test_projection_is_capped_at_capacity PASSED [ 47%]
+tests/test_sales_progress.py::test_velocity_uses_last_seven_days_only PASSED [ 48%]
+tests/test_sales_progress.py::test_progress_event_day_math PASSED        [ 49%]
+tests/test_sales_progress.py::test_progress_post_event_math PASSED       [ 50%]
+tests/test_sales_progress.py::test_live_vs_predicted_statuses PASSED     [ 50%]
+tests/test_sales_progress.py::test_live_vs_predicted_without_prediction_or_snapshots PASSED [ 51%]
+tests/test_sales_progress.py::test_patterns_with_zero_one_and_two_completed_events PASSED [ 52%]
+tests/test_sales_progress.py::test_snapshots_never_write_actuals_and_finalize_does PASSED [ 53%]
+tests/test_sales_progress.py::test_finalize_falls_back_to_tickets_and_keeps_revenue PASSED [ 54%]
+tests/test_sales_progress.py::test_finalize_rejections[3-True-400] PASSED [ 55%]
+tests/test_sales_progress.py::test_finalize_rejections[-1-False-400] PASSED [ 56%]
+tests/test_sales_progress.py::test_finalize_unknown_event PASSED         [ 57%]
+tests/test_sales_progress.py::test_returned_timestamps_carry_a_utc_offset PASSED [ 58%]
+tests/test_sales_snapshots.py::test_create_list_and_delete_snapshots PASSED [ 59%]
+tests/test_sales_snapshots.py::test_snapshots_are_listed_by_recorded_at_not_insert_order PASSED [ 60%]
+tests/test_sales_snapshots.py::test_unknown_event_and_snapshot_return_404 PASSED [ 61%]
+tests/test_sales_snapshots.py::test_decreasing_values_are_rejected PASSED [ 62%]
+tests/test_sales_snapshots.py::test_over_capacity_rejected PASSED        [ 63%]
+tests/test_sales_snapshots.py::test_gate_and_attendance_cannot_exceed_total PASSED [ 64%]
+tests/test_sales_snapshots.py::test_negative_values_rejected PASSED      [ 65%]
+tests/test_sales_snapshots.py::test_event_day_and_next_day_accepted_later_rejected PASSED [ 66%]
+tests/test_ticket_tiers.py::test_tier_crud PASSED                        [ 67%]
+tests/test_ticket_tiers.py::test_tiers_sorted_by_sort_order_then_price PASSED [ 68%]
+tests/test_ticket_tiers.py::test_duplicate_tier_name_returns_409 PASSED  [ 69%]
+tests/test_ticket_tiers.py::test_tier_validation_and_404s PASSED         [ 70%]
+tests/test_ticket_tiers.py::test_price_range_weighted_by_quantity PASSED [ 71%]
+tests/test_ticket_tiers.py::test_price_range_simple_mean_when_quantities_unknown PASSED [ 72%]
+tests/test_ticket_tiers.py::test_price_range_without_tiers PASSED        [ 73%]
+tests/test_ticket_tiers.py::test_event_responses_include_optional_tier_summary PASSED [ 74%]
+tests/test_ticket_tiers.py::test_premium_status_follows_the_premium_sale_phase PASSED [ 75%]
+tests/test_tier_analytics.py::test_tier_analytics_math PASSED            [ 76%]
+tests/test_tier_analytics.py::test_show_rate_per_tier_from_checked_in PASSED [ 77%]
+tests/test_tier_analytics.py::test_checked_in_validation PASSED          [ 78%]
+tests/test_tier_analytics.py::test_tier_analytics_empty_cases PASSED     [ 79%]
+tests/test_tier_analytics.py::test_tier_patterns_with_zero_one_and_two_completed_events PASSED [ 80%]
+tests/test_tier_copy.py::test_copy_tiers_from_another_event PASSED       [ 81%]
+tests/test_tier_copy.py::test_copy_tiers_404s PASSED                     [ 82%]
+tests/test_tier_sales.py::test_tier_sales_compute_totals_gate_and_revenue PASSED [ 83%]
+tests/test_tier_sales.py::test_matching_totals_accepted_and_mismatched_rejected PASSED [ 84%]
+tests/test_tier_sales.py::test_per_tier_cumulative_and_quantity_limits PASSED [ 85%]
+tests/test_tier_sales.py::test_foreign_duplicate_and_empty_tier_sales_rejected PASSED [ 86%]
+tests/test_tier_sales.py::test_tier_totals_still_respect_capacity PASSED [ 87%]
+tests/test_tier_sales.py::test_legacy_snapshots_still_work_on_tiered_events PASSED [ 88%]
+tests/test_tier_sales.py::test_tier_delete_and_quantity_blocked_once_sales_exist PASSED [ 89%]
+tests/test_tier_sales.py::test_revenue_breakdown_math PASSED             [ 90%]
+tests/test_tier_sales.py::test_revenue_breakdown_without_tier_data PASSED [ 91%]
+tests/test_tier_tags.py::test_helper_adds_missing_columns_once_and_backfills PASSED [ 92%]
+tests/test_tier_tags.py::test_helper_is_a_no_op_on_a_fresh_schema PASSED [ 93%]
+tests/test_tier_tags.py::test_helper_skips_tables_that_do_not_exist_yet PASSED [ 94%]
+tests/test_tier_tags.py::test_audience_and_partner_name_on_create_update_and_response PASSED [ 95%]
+tests/test_tier_tags.py::test_access_level_drives_premium PASSED         [ 96%]
+tests/test_tier_tags.py::test_price_multiplier_and_band PASSED           [ 97%]
+tests/test_tier_tags.py::test_partner_tiers_never_set_the_base_price PASSED [ 98%]
+tests/test_tier_tags.py::test_duplicate_tag_warning_does_not_block PASSED [ 99%]
+tests/test_tier_tags.py::test_price_locked_once_tier_has_sales PASSED    [100%]
+
+=============================== warnings summary ===============================
+../../../../../tmp/emvenv/lib/python3.10/site-packages/starlette/testclient.py:40
+  /tmp/emvenv/lib/python3.10/site-packages/starlette/testclient.py:40: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+../../../../../tmp/emvenv/lib/python3.10/site-packages/pydantic/_internal/_fields.py:132
+  /tmp/emvenv/lib/python3.10/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_version" in PredictionResponse has conflict with protected namespace "model_".
+  
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+../../../../../tmp/emvenv/lib/python3.10/site-packages/pydantic/_internal/_fields.py:132
+  /tmp/emvenv/lib/python3.10/site-packages/pydantic/_internal/_fields.py:132: UserWarning: Field "model_version" in RecentPredictionResponse has conflict with protected namespace "model_".
+  
+  You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 102 passed, 3 warnings in 111.13s (0:01:51) ==================
