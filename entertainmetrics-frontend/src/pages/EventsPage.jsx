@@ -350,7 +350,95 @@ function EditEventForm({ event, onCancel, onSaved }) {
   );
 }
 
-function EventDrawer({ event, artists, onClose, onEventUpdated }) {
+function DeleteEventPanel({ event, onDeleted }) {
+  const [confirming, setConfirming] = useState(false);
+  const summaryQuery = useApiData(confirming ? `/events/${event.id}/delete-summary` : null);
+  const [typedName, setTypedName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const summary = summaryQuery.data;
+  const nameMatches = typedName.trim() === event.event_name.trim();
+
+  function close() {
+    setConfirming(false);
+    setTypedName("");
+    setError("");
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError("");
+    try {
+      await apiDelete(`/events/${event.id}`);
+      onDeleted(event.event_name);
+    } catch (err) {
+      setError(err.message || "Failed to delete the event");
+      setDeleting(false);
+    }
+  }
+
+  const plural = (n, word) => `${formatNumber(n)} ${word}${n === 1 ? "" : "s"}`;
+
+  return (
+    <section className="danger-zone">
+      <h2 className="drawer-heading">Delete event</h2>
+      {!confirming ? (
+        <>
+          <p className="panel-subtext">
+            Permanently removes this event and everything recorded for it. Artists stay on the roster.
+          </p>
+          <button type="button" className="ghost-button danger-button" onClick={() => setConfirming(true)}>
+            Delete this event…
+          </button>
+        </>
+      ) : (
+        <div className="confirm-box danger-confirm">
+          <strong>Delete “{event.event_name}” permanently?</strong>
+          {summaryQuery.loading ? (
+            <p className="panel-subtext">Checking what will be removed…</p>
+          ) : summaryQuery.error ? (
+            <Notice tone="error">{summaryQuery.error.message}</Notice>
+          ) : (
+            summary && (
+              <ul>
+                <li>The event and its details</li>
+                <li>{plural(summary.predictions, "prediction")} and their ranges</li>
+                <li>{plural(summary.sales_snapshots, "sales entry")}</li>
+                <li>{plural(summary.ticket_tiers, "ticket tier")}</li>
+                <li>{plural(summary.lineup_entries, "lineup slot")}</li>
+                {summary.has_actuals && (
+                  <li>
+                    Its recorded actual results; it will no longer count in prediction accuracy
+                  </li>
+                )}
+              </ul>
+            )
+          )}
+          <p className="event-sub">This cannot be undone. To confirm, type the event name:</p>
+          <input
+            value={typedName}
+            onChange={(e) => setTypedName(e.target.value)}
+            placeholder={event.event_name}
+            aria-label="Type the event name to confirm"
+            autoComplete="off"
+          />
+          <Notice tone="error">{error}</Notice>
+          <div className="modal-actions">
+            <button type="button" className="ghost-button" onClick={close}>
+              Cancel
+            </button>
+            <button type="button" className="primary-button danger-solid" onClick={handleDelete}
+              disabled={!nameMatches || deleting || !summary}>
+              {deleting ? "Deleting…" : "Delete event"}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
   const lineupQuery = useApiData(`/events/${event.id}/lineup`);
   const tiersQuery = useApiData(`/events/${event.id}/tiers`);
   const tiers = tiersQuery.data ?? [];
@@ -616,6 +704,8 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
           </button>
         </div>
       </form>
+
+      <DeleteEventPanel event={event} onDeleted={onDeleted} />
     </Modal>
   );
 }
@@ -855,6 +945,12 @@ function EventsPage() {
           artists={artists}
           onClose={() => setSelectedId(null)}
           onEventUpdated={() => eventsQuery.reload()}
+          onDeleted={(name) => {
+            setSelectedId(null);
+            setNotice(`“${name}” was deleted.`);
+            eventsQuery.reload();
+            predictionsQuery.reload();
+          }}
         />
       )}
     </>
