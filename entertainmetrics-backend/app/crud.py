@@ -24,6 +24,14 @@ def get_events(db: Session):
     )
 
 
+def update_event(db: Session, event: models.Event, changes: dict):
+    for field, value in changes.items():
+        setattr(event, field, value)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
 def update_event_actuals(
     db: Session, event: models.Event, actuals: schemas.EventActualsUpdate
 ):

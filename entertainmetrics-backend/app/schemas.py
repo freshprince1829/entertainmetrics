@@ -17,6 +17,29 @@ class EventCreate(BaseModel):
     revenue: float | None = None
 
 
+class EventUpdate(BaseModel):
+    """Editable event details. Every field is optional; only the fields sent
+    are changed. Actual results are edited through /events/{id}/actuals."""
+    event_name: str | None = Field(default=None, min_length=1, max_length=200)
+    event_type: str | None = Field(default=None, min_length=1, max_length=100)
+    event_date: date | None = None
+    venue: str | None = Field(default=None, min_length=1, max_length=200)
+    city: str | None = Field(default=None, min_length=1, max_length=100)
+    ticket_price: float | None = Field(default=None, ge=0)
+    marketing_spend: float | None = Field(default=None, ge=0)
+    capacity: int | None = Field(default=None, ge=1)
+
+    @field_validator("event_name", "event_type", "venue", "city")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("cannot be blank")
+        return value
+
+
 class EventActualsUpdate(BaseModel):
     actual_attendance: int = Field(ge=0)
     revenue: float | None = Field(default=None, ge=0)
