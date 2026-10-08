@@ -24,6 +24,28 @@ def get_events(db: Session):
     )
 
 
+def event_delete_summary(event: models.Event) -> dict:
+    return {
+        "event_id": event.id,
+        "event_name": event.event_name,
+        "predictions": len(event.predictions),
+        "sales_snapshots": len(event.sales_snapshots),
+        "ticket_tiers": len(event.tiers),
+        "lineup_entries": len(event.lineup),
+        "has_actuals": event.actual_attendance is not None or event.revenue is not None,
+    }
+
+
+def delete_event(db: Session, event: models.Event) -> dict:
+    """Delete an event and, through the relationship cascades, its lineup,
+    predictions (with ranges), sales snapshots (with tier rows) and tiers.
+    Returns what was removed."""
+    summary = event_delete_summary(event)
+    db.delete(event)
+    db.commit()
+    return summary
+
+
 def update_event(db: Session, event: models.Event, changes: dict):
     for field, value in changes.items():
         setattr(event, field, value)

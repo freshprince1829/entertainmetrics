@@ -105,6 +105,17 @@ class ArtistResponse(BaseModel):
     created_at: datetime
 
 
+class EventDeleteSummary(BaseModel):
+    """Everything that is removed together with an event."""
+    event_id: int
+    event_name: str
+    predictions: int
+    sales_snapshots: int
+    ticket_tiers: int
+    lineup_entries: int
+    has_actuals: bool
+
+
 class ArtistDeleteResponse(BaseModel):
     deleted_artist_id: int
     artist_name: str

@@ -281,6 +281,30 @@ def update_event(event_id: int, changes: schemas.EventUpdate, db: Session = Depe
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 
 
+@app.get("/events/{event_id}/delete-summary", response_model=schemas.EventDeleteSummary)
+def get_event_delete_summary(event_id: int, db: Session = Depends(get_db)):
+    """What deleting this event would remove (read-only)."""
+    try:
+        return crud.event_delete_summary(_get_event_or_404(db, event_id))
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/events/{event_id}", response_model=schemas.EventDeleteSummary)
+def delete_event(event_id: int, db: Session = Depends(get_db)):
+    """Permanently delete an event with its lineup, predictions, sales
+    snapshots and ticket tiers. Artists themselves are kept."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        return crud.delete_event(db, event)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
 @app.patch("/events/{event_id}/actuals", response_model=schemas.EventResponse)
 def update_event_actuals(
     event_id: int, actuals: schemas.EventActualsUpdate, db: Session = Depends(get_db)
