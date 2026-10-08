@@ -3140,3 +3140,52 @@ td .pill {
 tr.no-entry td {
   color: var(--dim);
 }
+
+/* ---------- Edit event details ---------- */
+.edit-event {
+  margin-bottom: 8px;
+}
+
+.edit-event .form-section:first-child {
+  margin-top: 0;
+}
+
+.edit-event-note {
+  margin: 12px 0 0;
+}
+
+/* ---------- Delete event ---------- */
+.danger-zone {
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.danger-button {
+  color: var(--negative);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.danger-button:hover {
+  background: rgba(248, 113, 113, 0.08);
+  color: var(--negative);
+}
+
+.danger-confirm {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.danger-confirm input {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.primary-button.danger-solid {
+  background: var(--negative);
+  color: #0a0a0b;
+}
+
+.primary-button.danger-solid:disabled {
+  opacity: 0.4;
+}

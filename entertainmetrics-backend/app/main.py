@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -217,6 +217,90 @@ def create_event(event: schemas.EventCreate, db: Session = Depends(get_db)):
 def list_events(db: Session = Depends(get_db)):
     try:
         return crud.get_events(db)
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.patch("/events/{event_id}", response_model=schemas.EventResponse)
+def update_event(event_id: int, changes: schemas.EventUpdate, db: Session = Depends(get_db)):
+    """Correct an event's details (name, type, date, venue, city, prices,
+    marketing spend, capacity). Saved predictions keep the values they were
+    made with; new predictions use the corrected details."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        updates = changes.model_dump(exclude_unset=True)
+        for field, value in updates.items():
+            if value is None:
+                raise HTTPException(status_code=422, detail=f"{field} cannot be null")
+
+        snapshots = crud.get_sales_snapshots(db, event_id)
+        new_capacity = updates.get("capacity")
+        if new_capacity is not None:
+            most_sold = max((s.tickets_sold_total for s in snapshots), default=0)
+            if new_capacity < most_sold:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Capacity cannot be below the {most_sold:,} tickets already recorded as sold",
+                )
+            if event.actual_attendance is not None and new_capacity < event.actual_attendance:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Capacity cannot be below the recorded actual attendance "
+                        f"({event.actual_attendance:,})"
+                    ),
+                )
+
+        new_date = updates.get("event_date")
+        if new_date is not None and new_date != event.event_date:
+            has_actuals = event.actual_attendance is not None or event.revenue is not None
+            if has_actuals and new_date > date.today():
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "This event has actual results recorded, so its date cannot move "
+                        "into the future. Clear or correct the actuals first."
+                    ),
+                )
+            if snapshots:
+                last_day = max(sales.as_utc(s.recorded_at).date() for s in snapshots)
+                earliest_allowed = last_day - timedelta(days=sales.LATE_ENTRY_GRACE_DAYS)
+                if new_date < earliest_allowed:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Sales snapshots are recorded up to {last_day.isoformat()}, so the "
+                            f"event date cannot be earlier than {earliest_allowed.isoformat()}"
+                        ),
+                    )
+
+        return crud.update_event(db, event, updates)
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.get("/events/{event_id}/delete-summary", response_model=schemas.EventDeleteSummary)
+def get_event_delete_summary(event_id: int, db: Session = Depends(get_db)):
+    """What deleting this event would remove (read-only)."""
+    try:
+        return crud.event_delete_summary(_get_event_or_404(db, event_id))
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
+
+
+@app.delete("/events/{event_id}", response_model=schemas.EventDeleteSummary)
+def delete_event(event_id: int, db: Session = Depends(get_db)):
+    """Permanently delete an event with its lineup, predictions, sales
+    snapshots and ticket tiers. Artists themselves are kept."""
+    try:
+        event = _get_event_or_404(db, event_id)
+        return crud.delete_event(db, event)
+    except HTTPException:
+        raise
     except SQLAlchemyError as error:
         _rollback_and_raise(db, 500, "An unexpected database error occurred", error)
 

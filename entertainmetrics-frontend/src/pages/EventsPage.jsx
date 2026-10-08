@@ -250,10 +250,200 @@ function ActualsForm({ event, onSaved }) {
   );
 }
 
-function EventDrawer({ event, artists, onClose, onEventUpdated }) {
+const EDITABLE_FIELDS = [
+  "event_name", "event_type", "event_date", "venue", "city",
+  "ticket_price", "marketing_spend", "capacity",
+];
+const NUMBER_FIELDS = new Set(["ticket_price", "marketing_spend", "capacity"]);
+
+function EditEventForm({ event, onCancel, onSaved }) {
+  const [formData, setFormData] = useState(() =>
+    Object.fromEntries(EDITABLE_FIELDS.map((field) => [field, String(event[field] ?? "")])),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function handleChange(e) {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  }
+
+  // Only fields that actually changed are sent.
+  const changes = {};
+  EDITABLE_FIELDS.forEach((field) => {
+    const value = NUMBER_FIELDS.has(field) ? Number(formData[field]) : formData[field].trim();
+    if (value !== event[field]) changes[field] = value;
+  });
+  const changedCount = Object.keys(changes).length;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (changedCount === 0) {
+      onCancel();
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await apiPatch(`/events/${event.id}`, changes);
+      onSaved(updated, changedCount);
+    } catch (err) {
+      setError(err.message || "Failed to update the event");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="edit-event" onSubmit={handleSubmit}>
+      <div className="form-section">Edit event details</div>
+      <div className="form-grid">
+        <Field label="Event name" wide>
+          <input name="event_name" value={formData.event_name} onChange={handleChange} required maxLength={200} />
+        </Field>
+        <Field label="Event type">
+          <input name="event_type" list="edit-event-type-options" value={formData.event_type}
+            onChange={handleChange} required maxLength={100} />
+          <datalist id="edit-event-type-options">
+            {EVENT_TYPE_SUGGESTIONS.map((type) => (
+              <option key={type} value={type} />
+            ))}
+          </datalist>
+        </Field>
+        <Field label="Date">
+          <input name="event_date" type="date" value={formData.event_date} onChange={handleChange} required />
+        </Field>
+        <Field label="Venue">
+          <input name="venue" value={formData.venue} onChange={handleChange} required maxLength={200} />
+        </Field>
+        <Field label="City">
+          <input name="city" value={formData.city} onChange={handleChange} required maxLength={100} />
+        </Field>
+        <Field
+          label="Ticket price (KES)"
+          hint={event.tier_count > 0 ? "Fallback price; tier prices are edited under Ticket tiers" : undefined}
+        >
+          <input name="ticket_price" type="number" min="0" step="any" value={formData.ticket_price}
+            onChange={handleChange} required />
+        </Field>
+        <Field label="Marketing spend (KES)">
+          <input name="marketing_spend" type="number" min="0" step="any" value={formData.marketing_spend}
+            onChange={handleChange} required />
+        </Field>
+        <Field label="Capacity">
+          <input name="capacity" type="number" min="1" value={formData.capacity} onChange={handleChange} required />
+        </Field>
+      </div>
+      <p className="panel-subtext edit-event-note">
+        Saved predictions keep the values they were made with; run a new prediction after
+        changing prices, marketing spend or capacity.
+      </p>
+      <Notice tone="error">{error}</Notice>
+      <div className="modal-actions">
+        <button type="button" className="ghost-button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="primary-button" disabled={saving}>
+          {saving ? "Saving…" : changedCount ? `Save ${changedCount} change${changedCount === 1 ? "" : "s"}` : "No changes"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DeleteEventPanel({ event, onDeleted }) {
+  const [confirming, setConfirming] = useState(false);
+  const summaryQuery = useApiData(confirming ? `/events/${event.id}/delete-summary` : null);
+  const [typedName, setTypedName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const summary = summaryQuery.data;
+  const nameMatches = typedName.trim() === event.event_name.trim();
+
+  function close() {
+    setConfirming(false);
+    setTypedName("");
+    setError("");
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    setError("");
+    try {
+      await apiDelete(`/events/${event.id}`);
+      onDeleted(event.event_name);
+    } catch (err) {
+      setError(err.message || "Failed to delete the event");
+      setDeleting(false);
+    }
+  }
+
+  const plural = (n, word) => `${formatNumber(n)} ${word}${n === 1 ? "" : "s"}`;
+
+  return (
+    <section className="danger-zone">
+      <h2 className="drawer-heading">Delete event</h2>
+      {!confirming ? (
+        <>
+          <p className="panel-subtext">
+            Permanently removes this event and everything recorded for it. Artists stay on the roster.
+          </p>
+          <button type="button" className="ghost-button danger-button" onClick={() => setConfirming(true)}>
+            Delete this event…
+          </button>
+        </>
+      ) : (
+        <div className="confirm-box danger-confirm">
+          <strong>Delete “{event.event_name}” permanently?</strong>
+          {summaryQuery.loading ? (
+            <p className="panel-subtext">Checking what will be removed…</p>
+          ) : summaryQuery.error ? (
+            <Notice tone="error">{summaryQuery.error.message}</Notice>
+          ) : (
+            summary && (
+              <ul>
+                <li>The event and its details</li>
+                <li>{plural(summary.predictions, "prediction")} and their ranges</li>
+                <li>{plural(summary.sales_snapshots, "sales entry")}</li>
+                <li>{plural(summary.ticket_tiers, "ticket tier")}</li>
+                <li>{plural(summary.lineup_entries, "lineup slot")}</li>
+                {summary.has_actuals && (
+                  <li>
+                    Its recorded actual results; it will no longer count in prediction accuracy
+                  </li>
+                )}
+              </ul>
+            )
+          )}
+          <p className="event-sub">This cannot be undone. To confirm, type the event name:</p>
+          <input
+            value={typedName}
+            onChange={(e) => setTypedName(e.target.value)}
+            placeholder={event.event_name}
+            aria-label="Type the event name to confirm"
+            autoComplete="off"
+          />
+          <Notice tone="error">{error}</Notice>
+          <div className="modal-actions">
+            <button type="button" className="ghost-button" onClick={close}>
+              Cancel
+            </button>
+            <button type="button" className="primary-button danger-solid" onClick={handleDelete}
+              disabled={!nameMatches || deleting || !summary}>
+              {deleting ? "Deleting…" : "Delete event"}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
   const lineupQuery = useApiData(`/events/${event.id}/lineup`);
   const tiersQuery = useApiData(`/events/${event.id}/tiers`);
   const tiers = tiersQuery.data ?? [];
+  const [editing, setEditing] = useState(false);
+  const [editNotice, setEditNotice] = useState("");
   const lineup = useMemo(
     () =>
       [...(lineupQuery.data ?? [])].sort(
@@ -326,6 +516,17 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
 
   return (
     <Modal title={event.event_name} description={`${event.event_type} · ${formatDate(event.event_date)}`} onClose={onClose} side>
+      {editing ? (
+        <EditEventForm
+          event={event}
+          onCancel={() => setEditing(false)}
+          onSaved={(updated, count) => {
+            setEditing(false);
+            setEditNotice(`${count} detail${count === 1 ? "" : "s"} updated for ${updated.event_name}.`);
+            onEventUpdated();
+          }}
+        />
+      ) : (
       <div className="detail-grid">
         <div>
           <span>Venue</span>
@@ -357,6 +558,10 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
           <strong>{formatKes(event.revenue)}</strong>
         </div>
       </div>
+      )}
+      <Notice tone="success" onDismiss={() => setEditNotice("")}>
+        {editNotice}
+      </Notice>
 
       {canRecordActuals(event.event_date) ? (
         <ActualsForm
@@ -371,6 +576,11 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
       )}
 
       <div className="drawer-actions">
+        {!editing && (
+          <button type="button" className="ghost-button" onClick={() => { setEditNotice(""); setEditing(true); }}>
+            <Icon name="edit" size={16} /> Edit details
+          </button>
+        )}
         <Link to={`/predictions?event=${event.id}`} className="primary-button">
           <Icon name="chart" size={16} /> Run prediction
         </Link>
@@ -494,6 +704,8 @@ function EventDrawer({ event, artists, onClose, onEventUpdated }) {
           </button>
         </div>
       </form>
+
+      <DeleteEventPanel event={event} onDeleted={onDeleted} />
     </Modal>
   );
 }
@@ -733,6 +945,12 @@ function EventsPage() {
           artists={artists}
           onClose={() => setSelectedId(null)}
           onEventUpdated={() => eventsQuery.reload()}
+          onDeleted={(name) => {
+            setSelectedId(null);
+            setNotice(`“${name}” was deleted.`);
+            eventsQuery.reload();
+            predictionsQuery.reload();
+          }}
         />
       )}
     </>
