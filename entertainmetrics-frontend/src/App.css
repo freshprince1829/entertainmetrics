@@ -1,6 +1,3 @@
-/* EntertainMetrics design system — neutral, monochrome chrome.
-   Colour is reserved for data (see src/theme.js). The --amber/--amber-soft
-   names are kept as the "emphasis" tokens so existing components follow. */
 :root {
   --bg: #0a0a0b;
   --sidebar: #0a0a0b;
