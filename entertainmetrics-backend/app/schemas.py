@@ -656,3 +656,9 @@ class SalesImportResponse(BaseModel):
     snapshots: list[ImportSnapshotPreview]
     snapshots_created: int = 0
     tiers_created: list[str] = []
+
+
+class MeResponse(BaseModel):
+    id: str | None = None
+    email: str | None = None
+    role: str

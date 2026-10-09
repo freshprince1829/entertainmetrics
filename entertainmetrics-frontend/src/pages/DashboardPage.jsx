@@ -14,6 +14,8 @@ import {
   YAxis,
 } from "recharts";
 import { useApiData } from "../api";
+import { displayName } from "../auth/context";
+import { useAuth } from "../auth/useAuth";
 import { DeltaBadge, PanelButton, TickGauge, TickMeter } from "../components/meters";
 import { EventDayPatternsCard, LiveEventCard } from "../components/SalesTracking";
 import { RangeValue } from "../components/PredictionRange";
@@ -318,6 +320,7 @@ function MarketingCard({ rows, total }) {
 }
 
 function DashboardPage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const periodKey = PERIODS.some((p) => p.key === searchParams.get("period"))
     ? searchParams.get("period")
@@ -461,7 +464,7 @@ function DashboardPage() {
           <div className="eyebrow">
             {now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
           </div>
-          <h1>{greeting}, Tito</h1>
+          <h1>{greeting}, {displayName(user?.email)}</h1>
         </div>
         <div className="dash-controls">
           <label className="select-chip">

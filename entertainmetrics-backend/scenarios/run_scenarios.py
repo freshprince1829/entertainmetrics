@@ -17,12 +17,19 @@ from pathlib import Path
 
 _DB_DIR = tempfile.mkdtemp(prefix="em-scenario-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_DB_DIR}/scenario.db"
+# The API requires sign-in; this in-process run acts as an admin and never
+# contacts Supabase (the .invalid host cannot resolve).
+os.environ["SUPABASE_URL"] = "https://auth.scenario.invalid"
+os.environ["SUPABASE_PUBLISHABLE_KEY"] = "scenario-publishable-key"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import auth  # noqa: E402
 from app.main import app  # noqa: E402
 
 assert os.environ["DATABASE_URL"].startswith("sqlite")
+app.dependency_overrides[auth.get_current_user] = lambda: {
+    "id": "scenario-admin", "email": "scenario@local", "role": "admin"}
 c = TestClient(app)
 TODAY = date.today()
 UTC = timezone.utc

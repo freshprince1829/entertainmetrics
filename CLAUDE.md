@@ -533,3 +533,17 @@ Explain important architectural decisions.
 
 Keep the implementation simple, maintainable, explainable, and suitable
 for both academic evaluation and a future commercial demonstration.
+
+---
+
+## Authentication
+
+The API and app require sign-in through Supabase Auth (invite-only, no public
+sign-up). Roles come from the user's `app_metadata.role`: `admin` (read and
+write) or `viewer` (read-only; a missing role counts as viewer). Only `GET /`,
+`GET /health` and the API docs are public. Backend auth lives in
+`entertainmetrics-backend/app/auth.py`; frontend auth in
+`entertainmetrics-frontend/src/auth/`. Configuration is via environment
+variables only (see the `.env.example` files); never commit `.env`. Tests run
+as an admin via `tests/conftest.py`. User and role management is described in
+`entertainmetrics-backend/README.md`.

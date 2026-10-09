@@ -1,3 +1,4 @@
+import os
 from datetime import date, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Response
@@ -6,19 +7,31 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from .database import Base, engine, ensure_added_columns, get_db
-from . import crud, models, pricing, ranges, sales, sales_import, schemas, tier_analytics
+from . import auth, crud, models, pricing, ranges, sales, sales_import, schemas, tier_analytics
 
 Base.metadata.create_all(bind=engine)
 ensure_added_columns(engine)
 
-app = FastAPI(title="EntertainMetrics API")
+# Every route requires a signed-in user, except GET / and GET /health (see
+# auth.PUBLIC_PATHS). Viewers are read-only. The docs and OpenAPI schema stay
+# public because FastAPI serves them outside the app-level dependencies.
+app = FastAPI(title="EntertainMetrics API", dependencies=[Depends(auth.get_current_user)])
 
+DEFAULT_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv("ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
+
+# Tokens travel in the Authorization header, not cookies, so credentials are
+# not needed. Preflight (OPTIONS) requests are answered here, before auth.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -196,6 +209,12 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "EntertainMetrics API"}
+
+
+@app.get("/me", response_model=schemas.MeResponse)
+def get_me(user: dict = Depends(auth.get_current_user)):
+    """The signed-in user's email and role ("admin" or "viewer")."""
+    return user
 
 
 @app.post("/events", response_model=schemas.EventResponse)

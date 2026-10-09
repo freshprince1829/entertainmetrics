@@ -8,15 +8,28 @@ told apart from real client data and removed with cleanup_sample_data.sql.
 Everything goes through the real API (same validation, same predictions).
 Needs only the Python standard library.
 
+The API requires sign-in. The script asks for your EntertainMetrics email and
+password (the password is read with getpass: never shown, stored or printed),
+signs in with Supabase and sends the access token on every request. Entering
+data needs an ADMIN account; --check works with any account. A dry run makes
+no API calls and needs no sign-in.
+
+The Supabase URL and publishable key come from --supabase-url /
+--supabase-key, or the SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY environment
+variables (the same values as the backend's .env).
+
     python sample_data/seed_sample_data.py --dry-run     # print the plan only
     python sample_data/seed_sample_data.py               # enter the data
     python sample_data/seed_sample_data.py --check       # verify what is stored
     python sample_data/seed_sample_data.py --url http://127.0.0.1:8000
 """
 import argparse
+import getpass
 import json
+import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -84,14 +97,39 @@ ARTISTS = [("Headliner One", "Afro-pop", 900000, 90000, 400000, 0.8, 0.9, 0.85),
            ("Supporting Act", "Benga", 150000, 20000, 90000, 0.6, 0.4, 0.50)]
 
 
+def sign_in(supabase_url, publishable_key):
+    """Sign in with email + password and return the access token."""
+    email = input("EntertainMetrics email: ").strip()
+    password = getpass.getpass("Password: ")
+    url = supabase_url.rstrip("/") + "/auth/v1/token?" + urllib.parse.urlencode({"grant_type": "password"})
+    req = urllib.request.Request(
+        url, method="POST",
+        data=json.dumps({"email": email, "password": password}).encode(),
+        headers={"Content-Type": "application/json", "apikey": publishable_key},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            session = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 401):
+            sys.exit("Sign-in failed: the email or password is not correct.")
+        sys.exit(f"Sign-in failed: Supabase answered {e.code}. Try again later.")
+    except urllib.error.URLError as e:
+        sys.exit(f"Could not reach Supabase at {supabase_url}: {e.reason}")
+    return session["access_token"]
+
+
 class Api:
-    def __init__(self, base):
+    def __init__(self, base, token=None):
         self.base = base.rstrip("/")
+        self.token = token
 
     def call(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self.base + path, data=data, method=method,
-                                     headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=60) as r:
                 raw = r.read()
@@ -105,6 +143,10 @@ class Api:
 
     def ok(self, method, path, body=None, expect=(200, 201, 204)):
         status, data = self.call(method, path, body)
+        if status == 401:
+            sys.exit(f"FAILED {method} {path}: not signed in or the session expired. Run again.")
+        if status == 403:
+            sys.exit(f"FAILED {method} {path}: this account is read-only. Use an admin account.")
         if status not in expect:
             sys.exit(f"FAILED {method} {path} -> {status}: {data}")
         return data
@@ -260,14 +302,31 @@ def check(api):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:8000")
+    ap.add_argument("--url", default="http://127.0.0.1:8000", help="EntertainMetrics API base URL")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--supabase-url", default=os.getenv("SUPABASE_URL"),
+                    help="Supabase project URL (default: $SUPABASE_URL)")
+    ap.add_argument("--supabase-key", default=os.getenv("SUPABASE_PUBLISHABLE_KEY"),
+                    help="Supabase publishable key (default: $SUPABASE_PUBLISHABLE_KEY)")
     a = ap.parse_args()
-    api = Api(a.url)
+
+    if a.dry_run and not a.check:
+        run(Api(a.url), True)        # prints the plan only; no API calls
+        sys.exit(0)
+
+    if not a.supabase_url or not a.supabase_key:
+        sys.exit("Missing Supabase settings: pass --supabase-url and --supabase-key, or set "
+                 "SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.")
+    token = sign_in(a.supabase_url, a.supabase_key)
+    api = Api(a.url, token)
+    me = api.ok("GET", "/me")        # also confirms the API accepts the token
+    print(f"Signed in as {me['email']} ({me['role']}).")
     if a.check:
         check(api)
     else:
-        if not a.dry_run:
-            api.ok("GET", "/health")
-        run(api, a.dry_run)
+        if me["role"] != "admin":
+            sys.exit("This account is read-only (viewer). Entering sample data needs an admin "
+                     "account; ask an administrator to set app_metadata.role to \"admin\".")
+        api.ok("GET", "/health")
+        run(api, False)
