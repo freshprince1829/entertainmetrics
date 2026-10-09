@@ -10,18 +10,36 @@ from datetime import date, datetime, time, timedelta, timezone
 
 _TEST_DB_DIR = tempfile.mkdtemp(prefix="entertainmetrics-tests-")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_DIR}/import.db"
+# Auth settings must exist before the app is imported. The .invalid host can
+# never resolve, so tests can never reach the real Supabase project.
+os.environ["SUPABASE_URL"] = "https://auth.test.invalid"
+os.environ["SUPABASE_PUBLISHABLE_KEY"] = "test-publishable-key"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
+from app import auth  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
 assert os.environ["DATABASE_URL"].startswith("sqlite"), "tests must never use Supabase"
 
+# Existing tests run as a signed-in admin; tests/test_auth.py exercises the
+# real authentication dependency.
+TEST_ADMIN = {"id": "test-admin", "email": "admin@test.local", "role": "admin"}
+
 EAT = timezone(timedelta(hours=3))  # Nairobi local time
+
+
+@pytest.fixture(autouse=True)
+def signed_in_as_admin():
+    """Every test runs as an admin unless it removes this override (see
+    tests/test_auth.py). Applied per test because fixtures clear overrides."""
+    app.dependency_overrides[auth.get_current_user] = lambda: TEST_ADMIN
+    yield
+    app.dependency_overrides.pop(auth.get_current_user, None)
 
 
 @pytest.fixture
@@ -41,6 +59,7 @@ def client(tmp_path):
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[auth.get_current_user] = lambda: TEST_ADMIN
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
