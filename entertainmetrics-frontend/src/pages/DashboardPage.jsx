@@ -16,6 +16,7 @@ import {
 import { useApiData } from "../api";
 import { displayName } from "../auth/context";
 import { useAuth } from "../auth/useAuth";
+import { ReadOnlyNotice } from "../components/ReadOnly";
 import { DeltaBadge, PanelButton, TickGauge, TickMeter } from "../components/meters";
 import { EventDayPatternsCard, LiveEventCard } from "../components/SalesTracking";
 import { RangeValue } from "../components/PredictionRange";
@@ -320,7 +321,7 @@ function MarketingCard({ rows, total }) {
 }
 
 function DashboardPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const periodKey = PERIODS.some((p) => p.key === searchParams.get("period"))
     ? searchParams.get("period")
@@ -487,11 +488,14 @@ function DashboardPage() {
           <span className="range-chip">
             <Icon name="calendar" size={14} /> {rangeLabel}
           </span>
-          <Link to="/predictions" className="cta-button small">
-            <Icon name="plus" size={14} strokeWidth={2.2} /> Run prediction
-          </Link>
+          {isAdmin && (
+            <Link to="/predictions" className="cta-button small">
+              <Icon name="plus" size={14} strokeWidth={2.2} /> Run prediction
+            </Link>
+          )}
         </div>
       </header>
+      <ReadOnlyNotice />
 
       <div className="dash-grid">
         <div className="dash-main">

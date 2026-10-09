@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiDelete, apiPatch, apiPost, useApiData } from "../api";
 import { formatKes, formatNumber } from "../format";
 import { ACCESS_LABELS, AUDIENCE_LABELS, PHASE_LABELS, tierColor } from "../tiers";
+import { useAuth } from "../auth/useAuth";
 import { Field, Notice } from "./ui";
 
 // Presets fill in everything except price and quantity.
@@ -207,6 +208,7 @@ function CopyTiersControl({ event, tiers, onCopied, onError }) {
 }
 
 export function TicketTiersEditor({ event, tiers, onChanged }) {
+  const { isAdmin } = useAuth();
   const priceRangeQuery = useApiData(`/events/${event.id}/price-range`);
   const [form, setForm, onChange] = useFormState(emptyTierForm);
   const [submitting, setSubmitting] = useState(false);
@@ -317,7 +319,7 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
                   </div>
                 </div>
                 <strong className="tier-price">{formatKes(tier.price)}</strong>
-                {pendingDeleteId === tier.id ? (
+                {!isAdmin ? null : pendingDeleteId === tier.id ? (
                   <span className="row-actions">
                     <button type="button" className="text-button danger" onClick={() => handleDelete(tier)}>
                       Confirm delete
@@ -346,13 +348,16 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
         {notice?.text}
       </Notice>
 
-      <CopyTiersControl
-        event={event}
-        tiers={tiers}
-        onCopied={(text) => changed(text)}
-        onError={(text) => setNotice({ tone: "error", text })}
-      />
+      {isAdmin && (
+        <CopyTiersControl
+          event={event}
+          tiers={tiers}
+          onCopied={(text) => changed(text)}
+          onError={(text) => setNotice({ tone: "error", text })}
+        />
+      )}
 
+      {isAdmin && (
       <form className="lineup-form" onSubmit={handleAdd}>
         <div className="form-section">Add a tier</div>
         <div className="preset-row" role="group" aria-label="Quick-add presets">
@@ -376,6 +381,7 @@ export function TicketTiersEditor({ event, tiers, onChanged }) {
           </button>
         </div>
       </form>
+      )}
     </section>
   );
 }

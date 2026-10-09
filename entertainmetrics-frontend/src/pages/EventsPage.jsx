@@ -15,6 +15,8 @@ import {
 import { SalesTrackingSection } from "../components/SalesTracking";
 import { TicketTiersEditor } from "../components/TicketTiers";
 import { RangeValue } from "../components/PredictionRange";
+import { ReadOnlyNotice } from "../components/ReadOnly";
+import { useAuth } from "../auth/useAuth";
 import {
   canRecordActuals,
   formatDate,
@@ -439,6 +441,7 @@ function DeleteEventPanel({ event, onDeleted }) {
 }
 
 function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
+  const { isAdmin } = useAuth();
   const lineupQuery = useApiData(`/events/${event.id}/lineup`);
   const tiersQuery = useApiData(`/events/${event.id}/tiers`);
   const tiers = tiersQuery.data ?? [];
@@ -562,28 +565,32 @@ function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
       <Notice tone="success" onDismiss={() => setEditNotice("")}>
         {editNotice}
       </Notice>
+      <ReadOnlyNotice />
 
-      {canRecordActuals(event.event_date) ? (
-        <ActualsForm
-          key={`${event.actual_attendance}-${event.revenue}`}
-          event={event}
-          onSaved={onEventUpdated}
-        />
-      ) : (
-        <p className="panel-subtext">
-          Actual results can be recorded once the event date ({formatDate(event.event_date)}) arrives.
-        </p>
-      )}
+      {isAdmin &&
+        (canRecordActuals(event.event_date) ? (
+          <ActualsForm
+            key={`${event.actual_attendance}-${event.revenue}`}
+            event={event}
+            onSaved={onEventUpdated}
+          />
+        ) : (
+          <p className="panel-subtext">
+            Actual results can be recorded once the event date ({formatDate(event.event_date)}) arrives.
+          </p>
+        ))}
 
       <div className="drawer-actions">
-        {!editing && (
+        {isAdmin && !editing && (
           <button type="button" className="ghost-button" onClick={() => { setEditNotice(""); setEditing(true); }}>
             <Icon name="edit" size={16} /> Edit details
           </button>
         )}
-        <Link to={`/predictions?event=${event.id}`} className="primary-button">
-          <Icon name="chart" size={16} /> Run prediction
-        </Link>
+        {isAdmin && (
+          <Link to={`/predictions?event=${event.id}`} className="primary-button">
+            <Icon name="chart" size={16} /> Run prediction
+          </Link>
+        )}
         <Link to={`/recommendations?event=${event.id}`} className="ghost-button">
           <Icon name="spark" size={16} /> Recommendations
         </Link>
@@ -620,7 +627,7 @@ function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
       ) : lineupQuery.error ? (
         <Notice tone="error">{lineupQuery.error.message}</Notice>
       ) : lineup.length === 0 ? (
-        <EmptyState title="No artists linked yet">Add the first act below.</EmptyState>
+        <EmptyState title="No artists linked yet">{isAdmin ? "Add the first act below." : null}</EmptyState>
       ) : (
         <ol className="lineup-list">
           {lineup.map((entry) => {
@@ -643,7 +650,7 @@ function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
                       .join(" · ") || "No role set"}
                   </div>
                 </div>
-                {pendingRemoveId === entry.id ? (
+                {!isAdmin ? null : pendingRemoveId === entry.id ? (
                   <span className="row-actions lineup-actions">
                     <button type="button" className="text-button danger" onClick={() => handleRemove(entry, artistName)}>
                       Confirm remove
@@ -668,6 +675,7 @@ function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
         </ol>
       )}
 
+      {isAdmin && (
       <form className="lineup-form" onSubmit={handleSubmit}>
         <div className="form-section">Add artist to lineup</div>
         <div className="form-grid">
@@ -704,13 +712,15 @@ function EventDrawer({ event, artists, onClose, onEventUpdated, onDeleted }) {
           </button>
         </div>
       </form>
+      )}
 
-      <DeleteEventPanel event={event} onDeleted={onDeleted} />
+      {isAdmin && <DeleteEventPanel event={event} onDeleted={onDeleted} />}
     </Modal>
   );
 }
 
 function EventsPage() {
+  const { isAdmin } = useAuth();
   const eventsQuery = useApiData("/events");
   const artistsQuery = useApiData("/artists");
   const predictionsQuery = useApiData("/predictions");
@@ -773,10 +783,13 @@ function EventsPage() {
         title="Events"
         description="Create events, manage lineups and jump straight into forecasts."
       >
-        <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
-          <Icon name="plus" size={16} strokeWidth={2.2} /> New event
-        </button>
+        {isAdmin && (
+          <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
+            <Icon name="plus" size={16} strokeWidth={2.2} /> New event
+          </button>
+        )}
       </PageHeader>
+      <ReadOnlyNotice />
 
       <Notice tone="success" onDismiss={() => setNotice("")}>
         {notice}
@@ -832,7 +845,7 @@ function EventsPage() {
             <EmptyState
               title={events.length === 0 ? "No events yet" : "No events match your filters"}
               action={
-                events.length === 0 && (
+                isAdmin && events.length === 0 && (
                   <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
                     Create your first event
                   </button>

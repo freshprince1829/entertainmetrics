@@ -95,7 +95,7 @@ function UserCard() {
           {email}
         </div>
         <div className="workspace-sub">
-          <span className={role === "admin" ? "role-badge admin" : "role-badge"}>{ROLE_LABELS[role]}</span>
+          <span className={role === "admin" ? "role-badge admin" : "role-badge read-only"}>{ROLE_LABELS[role]}</span>
         </div>
       </div>
     </div>
@@ -116,16 +116,6 @@ function SignOutButton() {
     >
       Sign out
     </button>
-  );
-}
-
-function ReadOnlyBanner() {
-  const { role } = useAuth();
-  if (role !== "viewer") return null;
-  return (
-    <div className="readonly-banner" role="note">
-      Read-only access: you can view everything, but changes are disabled for your account.
-    </div>
   );
 }
 
@@ -193,7 +183,6 @@ function AppLayout() {
         </aside>
 
         <main className="main-content">
-          <ReadOnlyBanner />
           <Suspense fallback={<LoadingPanel rows={5} />}>
             <Outlet />
           </Suspense>

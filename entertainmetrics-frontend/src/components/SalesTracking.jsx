@@ -21,6 +21,7 @@ import { TierAnalyticsPanel } from "./TierAnalytics";
 import { GateMode } from "./SalesEntry";
 import { DailySalesView, TierDailyEntryForm, UndoLastEntry } from "./DailySales";
 import { SalesImport } from "./SalesImport";
+import { useAuth } from "../auth/useAuth";
 
 // Chart surface, used for the 2px gaps between stacked segments.
 const SURFACE = "#141416";
@@ -420,7 +421,7 @@ function TierSalesCharts({ eventId, snapshots, tiers }) {
   );
 }
 
-function SnapshotTable({ eventId, snapshots, onDeleted }) {
+function SnapshotTable({ eventId, snapshots, onDeleted, canDelete }) {
   const [pendingId, setPendingId] = useState(null);
   const [error, setError] = useState("");
 
@@ -447,7 +448,7 @@ function SnapshotTable({ eventId, snapshots, onDeleted }) {
               <th>Checked in</th>
               <th>Revenue</th>
               <th>Notes</th>
-              <th />
+              {canDelete && <th />}
             </tr>
           </thead>
           <tbody>
@@ -462,6 +463,7 @@ function SnapshotTable({ eventId, snapshots, onDeleted }) {
                 <td>{formatNumber(s.attendance_checked_in)}</td>
                 <td>{formatKes(s.revenue_to_date)}</td>
                 <td className="event-sub">{s.notes || "-"}</td>
+                {canDelete && (
                 <td>
                   {pendingId === s.id ? (
                     <span className="row-actions">
@@ -478,6 +480,7 @@ function SnapshotTable({ eventId, snapshots, onDeleted }) {
                     </button>
                   )}
                 </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -563,6 +566,8 @@ function CloseOutPanel({ event, preview, onFinalized }) {
 }
 
 export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTiersChanged }) {
+  // Viewers see every sales view; entry, import, undo and close-out are admin-only.
+  const { isAdmin } = useAuth();
   const snapshotsQuery = useApiData(`/events/${event.id}/sales-snapshots`);
   const progressQuery = useApiData(`/events/${event.id}/sales-progress`);
   const [liveVersion, setLiveVersion] = useState(0);
@@ -624,8 +629,8 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTier
               <TierAnalyticsPanel key={`analytics-${liveVersion}:${tiers.map((t) => t.id).join("-")}`} eventId={event.id} />
             </>
           )}
-          <SnapshotTable eventId={event.id} snapshots={snapshots} onDeleted={reloadSales} />
-          {canRecordActuals(event.event_date) && progress.finalize_preview && (
+          <SnapshotTable eventId={event.id} snapshots={snapshots} onDeleted={reloadSales} canDelete={isAdmin} />
+          {isAdmin && canRecordActuals(event.event_date) && progress.finalize_preview && (
             <CloseOutPanel
               event={event}
               preview={progress.finalize_preview}
@@ -638,6 +643,8 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTier
         </>
       )}
 
+      {isAdmin && (
+        <>
       {tiers.length > 0 && (
         <div className="gate-launch">
           <button type="button" className="ghost-button" onClick={() => setGateOpen(true)}>
@@ -693,6 +700,8 @@ export function SalesTrackingSection({ event, tiers = [], onEventUpdated, onTier
           onTiersChanged?.();
         }}
       />
+        </>
+      )}
     </section>
   );
 }
