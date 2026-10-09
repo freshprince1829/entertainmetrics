@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { SESSION_EXPIRED_EVENT, SESSION_EXPIRED_MESSAGE } from "./auth/context";
+import { getAccessToken } from "./supabase";
 
 // Set VITE_API_BASE_URL in .env (or the hosting provider's env settings)
 // to point the frontend at a deployed backend.
@@ -6,10 +8,14 @@ export const API_BASE = (
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
 ).replace(/\/+$/, "");
 
-async function request(path, options) {
+async function request(path, options = {}) {
+  const token = await getAccessToken();
+  const headers = { ...(options.headers ?? {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`, options);
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   } catch {
     throw new Error(
       "Cannot reach the EntertainMetrics API. Check that the backend is running.",
@@ -17,6 +23,14 @@ async function request(path, options) {
   }
 
   const data = await res.json().catch(() => null);
+
+  if (res.status === 401) {
+    // AuthProvider signs out and sends the user to /login with a message.
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    const error = new Error(SESSION_EXPIRED_MESSAGE);
+    error.status = 401;
+    throw error;
+  }
 
   if (!res.ok) {
     const detail = data?.detail;
@@ -28,7 +42,9 @@ async function request(path, options) {
           : `Request failed (${res.status})`;
     const error = new Error(message);
     // Structured details (e.g. a list of import errors) stay available.
+    // 403 "Read-only access: ..." from the API is shown like any other error.
     error.detail = detail;
+    error.status = res.status;
     throw error;
   }
 

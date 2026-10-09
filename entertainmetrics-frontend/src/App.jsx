@@ -1,8 +1,14 @@
 import { lazy, Suspense, useState } from "react";
-import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, NavLink, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import "./App.css";
 import { API_BASE, useApiData } from "./api";
+import { AuthProvider } from "./auth/AuthContext";
+import { ROLE_LABELS } from "./auth/context";
+import { ProtectedRoute } from "./auth/ProtectedRoute";
+import { useAuth } from "./auth/useAuth";
 import { EmptyState, Icon, LoadingPanel } from "./components/ui";
+import { ForgotPasswordPage, LoginPage, ResetPasswordPage } from "./pages/AuthPages";
+import LandingPage from "./pages/LandingPage";
 
 // Pages are loaded on demand so the charting library is not part of the
 // initial download.
@@ -13,7 +19,7 @@ const PredictionsPage = lazy(() => import("./pages/PredictionsPage"));
 const RecommendationsPage = lazy(() => import("./pages/RecommendationsPage"));
 
 const navItems = [
-  { to: "/", label: "Dashboard", end: true, icon: "dashboard" },
+  { to: "/dashboard", label: "Dashboard", end: true, icon: "dashboard" },
   { to: "/events", label: "Events", icon: "calendar" },
   { to: "/artists", label: "Artists", icon: "music" },
   { to: "/predictions", label: "Predictions", icon: "chart" },
@@ -65,7 +71,7 @@ function NotFound() {
       <EmptyState
         title="Page not found"
         action={
-          <Link to="/" className="cta-button">
+          <Link to="/dashboard" className="cta-button">
             Back to dashboard
           </Link>
         }
@@ -76,12 +82,59 @@ function NotFound() {
   );
 }
 
-function App() {
+function UserCard() {
+  const { user, role } = useAuth();
+  const email = user?.email ?? "";
+  return (
+    <div className="workspace-card">
+      <span className="workspace-avatar" aria-hidden="true">
+        {(email.charAt(0) || "?").toUpperCase()}
+      </span>
+      <div className="workspace-who">
+        <div className="workspace-name" title={email}>
+          {email}
+        </div>
+        <div className="workspace-sub">
+          <span className={role === "admin" ? "role-badge admin" : "role-badge"}>{ROLE_LABELS[role]}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignOutButton() {
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      className="ghost-button sign-out"
+      onClick={async () => {
+        await signOut();
+        navigate("/", { replace: true });
+      }}
+    >
+      Sign out
+    </button>
+  );
+}
+
+function ReadOnlyBanner() {
+  const { role } = useAuth();
+  if (role !== "viewer") return null;
+  return (
+    <div className="readonly-banner" role="note">
+      Read-only access: you can view everything, but changes are disabled for your account.
+    </div>
+  );
+}
+
+/** The signed-in application shell (sidebar + page). */
+function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
   return (
-    <BrowserRouter>
       <div className="layout">
         <div className="topbar">
           <div className="brand">
@@ -107,13 +160,7 @@ function App() {
             <div className="brand-name">EntertainMetrics</div>
           </div>
 
-          <div className="workspace-card">
-            <span className="workspace-avatar">T</span>
-            <div>
-              <div className="workspace-name">Tito&apos;s workspace</div>
-              <div className="workspace-sub">Predictive analytics</div>
-            </div>
-          </div>
+          <UserCard />
 
           <nav>
             <div className="nav-section">Platform</div>
@@ -141,29 +188,48 @@ function App() {
               </a>
             </div>
             <ApiStatus />
-            <div className="sidebar-user">
-              <span className="avatar">T</span>
-              <div>
-                <div className="user-name">Tito</div>
-                <div className="user-sub">Workspace owner</div>
-              </div>
-            </div>
+            <SignOutButton />
           </div>
         </aside>
 
         <main className="main-content">
+          <ReadOnlyBanner />
           <Suspense fallback={<LoadingPanel rows={5} />}>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/events" element={<EventsPage />} />
-              <Route path="/artists" element={<ArtistsPage />} />
-              <Route path="/predictions" element={<PredictionsPage />} />
-              <Route path="/recommendations" element={<RecommendationsPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Outlet />
           </Suspense>
         </main>
       </div>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* Public */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+          {/* Signed-in users only */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/events" element={<EventsPage />} />
+            <Route path="/artists" element={<ArtistsPage />} />
+            <Route path="/predictions" element={<PredictionsPage />} />
+            <Route path="/recommendations" element={<RecommendationsPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }
