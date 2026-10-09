@@ -83,6 +83,9 @@ export function AuthProvider({ children }) {
       session,
       user: session?.user ?? null,
       role: session ? roleOf(session.user) : null,
+      // UI hints only: the API enforces roles (403 for viewers' changes).
+      isAdmin: Boolean(session) && roleOf(session.user) === "admin",
+      isViewer: Boolean(session) && roleOf(session.user) !== "admin",
       loading,
       recovery,
       configError: supabaseConfigError,
