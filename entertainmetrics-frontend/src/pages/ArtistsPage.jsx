@@ -13,6 +13,8 @@ import {
 } from "../components/ui";
 import { formatCompact, formatNumber, thumbGradient } from "../format";
 import { INK } from "../theme";
+import { useAuth } from "../auth/useAuth";
+import { ReadOnlyNotice } from "../components/ReadOnly";
 
 const initialForm = {
   artist_name: "",
@@ -136,6 +138,7 @@ function NewArtistModal({ onClose, onCreated }) {
 }
 
 function ArtistsPage() {
+  const { isAdmin } = useAuth();
   const artistsQuery = useApiData("/artists");
   const [search, setSearch] = useState("");
   const [genreFilter, setGenreFilter] = useState("");
@@ -221,10 +224,13 @@ function ArtistsPage() {
         title="Artists"
         description="Artist intelligence that powers lineup-aware predictions and recommendations."
       >
-        <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
-          <Icon name="plus" size={16} strokeWidth={2.2} /> New artist
-        </button>
+        {isAdmin && (
+          <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
+            <Icon name="plus" size={16} strokeWidth={2.2} /> New artist
+          </button>
+        )}
       </PageHeader>
+      <ReadOnlyNotice />
 
       <Notice tone="success" onDismiss={() => setNotice("")}>
         {notice}
@@ -284,7 +290,7 @@ function ArtistsPage() {
             <EmptyState
               title={artists.length === 0 ? "No artists yet" : "No artists match your filters"}
               action={
-                artists.length === 0 && (
+                isAdmin && artists.length === 0 && (
                   <button type="button" className="cta-button" onClick={() => setShowCreate(true)}>
                     Add your first artist
                   </button>
@@ -334,7 +340,7 @@ function ArtistsPage() {
                     ))}
                   </div>
 
-                  {pendingDeleteId === artist.id ? (
+                  {!isAdmin ? null : pendingDeleteId === artist.id ? (
                     <div className="confirm-box artist-delete-confirm">
                       <strong>Delete {artist.artist_name} from the system?</strong>
                       <p className="event-sub">

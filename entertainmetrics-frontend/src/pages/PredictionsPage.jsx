@@ -18,6 +18,8 @@ import {
   formatNumber,
 } from "../format";
 import { FORECAST } from "../theme";
+import { useAuth } from "../auth/useAuth";
+import { ReadOnlyNotice } from "../components/ReadOnly";
 import { RangeBar, RangeNote, RangeValue } from "../components/PredictionRange";
 
 const INPUT_FIELDS = [
@@ -104,6 +106,7 @@ function ForecastResult({ prediction, event, capacity, fresh }) {
 }
 
 function PredictionsPage() {
+  const { isViewer } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const eventsQuery = useApiData("/events");
   const predictionsQuery = useApiData("/predictions");
@@ -199,6 +202,28 @@ function PredictionsPage() {
       />
 
       <section className="hero-grid">
+        {isViewer ? (
+          <div className="panel">
+            <h2>Saved forecasts</h2>
+            <ReadOnlyNotice>
+              You have read-only access. Pick an event to see its latest saved forecast.
+            </ReadOnlyNotice>
+            <div className="form-grid">
+              <Field label="Event" wide>
+                <select value={selectedEventId} onChange={(e) => selectEvent(e.target.value)}>
+                  <option value="">
+                    {eventsQuery.loading ? "Loading events…" : events.length === 0 ? "No events available" : "Select an event"}
+                  </option>
+                  {events.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.event_name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          </div>
+        ) : (
         <div className="panel">
           <h2>Run a forecast</h2>
           <p className="panel-subtext" style={{ marginTop: 0 }}>
@@ -261,6 +286,7 @@ function PredictionsPage() {
             always capped at capacity.
           </p>
         </div>
+        )}
 
         {shownResult ? (
           <ForecastResult
