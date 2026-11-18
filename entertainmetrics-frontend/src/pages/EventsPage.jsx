@@ -405,7 +405,7 @@ function DeleteEventPanel({ event, onDeleted }) {
               <ul>
                 <li>The event and its details</li>
                 <li>{plural(summary.predictions, "prediction")} and their ranges</li>
-                <li>{plural(summary.sales_snapshots, "sales entry")}</li>
+                <li>{formatNumber(summary.sales_snapshots)} {summary.sales_snapshots === 1 ? "sales entry" : "sales entries"}</li>
                 <li>{plural(summary.ticket_tiers, "ticket tier")}</li>
                 <li>{plural(summary.lineup_entries, "lineup slot")}</li>
                 {summary.has_actuals && (
