@@ -40,7 +40,7 @@ and returns to `/login` with "Your session expired, please sign in again".
 
 ```bash
 npm install
-cp .env.example .env.local   # then check the values
+cp .env.example .env.local   # then fill in the Supabase values
 npm run dev                  # http://localhost:5173
 ```
 
