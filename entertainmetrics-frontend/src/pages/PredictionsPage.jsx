@@ -206,7 +206,7 @@ function PredictionsPage() {
           <div className="panel">
             <h2>Saved forecasts</h2>
             <ReadOnlyNotice>
-              You have read-only access. Pick an event to see its latest saved forecast.
+              You're signed in as a viewer. Pick an event to see its latest saved forecast.
             </ReadOnlyNotice>
             <div className="form-grid">
               <Field label="Event" wide>
