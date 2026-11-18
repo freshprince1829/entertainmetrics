@@ -111,16 +111,18 @@ a:hover {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  background: linear-gradient(135deg, #ffffff, #b9b9bf);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.brand-mark svg {
-  width: 15px;
-  height: 15px;
+.brand-mark svg,
+.brand-mark img {
+  width: 24px;
+  height: auto;
+  display: block;
 }
 
 .brand-name {

@@ -103,12 +103,7 @@ export default function LandingPage() {
       <header className="landing-nav">
         <Link to="/" className="landing-brand">
           <span className="brand-mark" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B0D10" strokeWidth="2.2"
-              strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 18v-6a9 9 0 0118 0v6" />
-              <path d="M21 19a2 2 0 01-2 2h-1v-6h3z" />
-              <path d="M3 19a2 2 0 002 2h1v-6H3z" />
-            </svg>
+            <img src="/brand/logo-mark.svg" alt="" aria-hidden="true" />
           </span>
           EntertainMetrics
         </Link>
