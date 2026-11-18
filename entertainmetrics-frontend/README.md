@@ -29,7 +29,7 @@ Signed-in users only (others are sent to `/login` and returned afterwards):
 
 Sign-in uses Supabase Auth. Access is by invitation: an administrator creates accounts in
 Supabase and sets each person's role (see `entertainmetrics-backend/README.md`). **Admin**
-accounts can create, edit and delete; **Read-only** (viewer) accounts can view everything and
+accounts can create, edit and delete; **Viewer** (read-only) accounts can view everything and
 see a banner explaining that changes are disabled. The sidebar shows the signed-in email, the
 role and a Sign out button.
 

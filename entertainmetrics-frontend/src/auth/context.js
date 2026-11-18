@@ -11,7 +11,7 @@ export function roleOf(user) {
   return user?.app_metadata?.role === "admin" ? "admin" : "viewer";
 }
 
-export const ROLE_LABELS = { admin: "Admin", viewer: "Read-only" };
+export const ROLE_LABELS = { admin: "Admin", viewer: "Viewer" };
 
 /** "tito.m@example.com" -> "Tito" for greetings. */
 export function displayName(email) {
