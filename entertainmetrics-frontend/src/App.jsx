@@ -121,6 +121,7 @@ function SignOutButton() {
 
 /** The signed-in application shell (sidebar + page). */
 function AppLayout() {
+  const { isAdmin } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = () => setMenuOpen(false);
 
@@ -173,11 +174,13 @@ function AppLayout() {
               <small>Prediction engine</small>
               <strong>v1 · rule-based</strong>
               <p>Explainable estimates, not guarantees.</p>
-              <a href={`${API_BASE}/docs`} target="_blank" rel="noreferrer">
-                API reference <Icon name="arrow" size={14} />
-              </a>
+              {isAdmin && (
+                <a href={`${API_BASE}/docs`} target="_blank" rel="noreferrer">
+                  API reference <Icon name="arrow" size={14} />
+                </a>
+              )}
             </div>
-            <ApiStatus />
+            {isAdmin && <ApiStatus />}
             <SignOutButton />
           </div>
         </aside>
